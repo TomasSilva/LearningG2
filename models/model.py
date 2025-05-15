@@ -1,6 +1,7 @@
 '''ML architecture for the G2-structure learning'''
 # Import libraries
 import tensorflow as tf
+from math import comb
 
 # Import functions
 from geometry.geometry import PatchChange_Coords, PatchChange_G2form
@@ -66,7 +67,7 @@ class GlobalModel(tf.keras.Model):
 
         # Compute the number of independent metric entries, this is the number 
         # of vielbein entries used as the model outputs for each patch
-        n_out = self.dim**3 ###edit for the dof vec sizes
+        n_out = comb(self.dim, 3) #...rank hardcoded as 3 here
 
         # Define submodels for each patch
         self.patch_submodels = [PatchSubModel(self.hp, n_out) for _ in range(self.n_patches)]

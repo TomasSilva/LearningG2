@@ -7,7 +7,8 @@ import yaml
 import pickle as pickle
 
 # Import functions
-from geometry.geometry import CoordChange_C5R10, kahler_form_real, wedge_form2_with_form1, holomorphic_volume_form_to_real_tensor
+from geometry.geometry import CoordChange_C5R10, kahler_form_real, holomorphic_volume_form_to_real_tensor
+from geometry.wedge_product import wedge_product
 
 # Import cymetric functions
 from cymetric.pointgen.pointgen import PointGenerator
@@ -55,7 +56,18 @@ def LinkSample(n_pts): ###change whats passed here?
     hvf_r, hvf_i = holomorphic_volume_form_to_real_tensor(holomorphic_volume_form)
     hermitian_metric = cymetric_model(CoordChange_C5R10(cy_points)).numpy()
     kahler_form_R6 = kahler_form_real(hermitian_metric)
-    g2form_R7 = wedge_form2_with_form1(kahler_form_R6, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1))
+    kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
+    
+    ### for TOMAS
+    #...currently functional code:
+    dthetas = np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)
+    g2form_R7 = np.array([wedge_product(kahler_form_R7[idx], dthetas[idx]) for idx in range(cy_points.shape[0])])
+    #...to replace with batch compatible code below:
+    #g2form_R7 = wedge_product(kahler_form_R7, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)) 
+    #...below is the old code (delete when happy)
+    #g2form_R7 = wedge_form2_with_form1(kahler_form_R6, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)) 
+    ###
+    
     g2form_R7[:, :6, :6, :6] += hvf_i
 
     return (link_points_local, g2form_R7)

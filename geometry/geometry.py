@@ -2,8 +2,9 @@
 # Import libraries
 import numpy as np
 import tensorflow as tf
-from math import comb
-from itertools import product, permutations
+from math import comb, pow, factorial
+from itertools import product, permutations, combinations
+from geometry.wedge_product import wedge_product
 
 ###########################################################################
 # Coordinate change functions
@@ -98,43 +99,6 @@ def kahler_form_real(H_batch):
     return omega_reordered
 
 
-def wedge_form2_with_form1(omega6_batch, alpha7_batch):
-    """
-    Vectorized wedge product of a batch of 6x6 antisymmetric 2-forms with a batch of 7D 1-forms.
-    
-    Args:
-        omega6_batch (np.ndarray): shape (batch_size, 6, 6), antisymmetric 2-forms.
-        alpha7_batch (np.ndarray): shape (batch_size, 7), 1-forms.
-
-    Returns:
-        form3_batch (np.ndarray): shape (batch_size, 7, 7, 7), antisymmetric 3-forms.
-    """
-    batch_size = omega6_batch.shape[0]
-    
-    assert omega6_batch.shape == (batch_size, 6, 6), "omega6 must be (N, 6, 6)"
-    assert alpha7_batch.shape == (batch_size, 7), "alpha7 must be (N, 7)"
-
-    # Check antisymmetry
-    if not np.allclose(omega6_batch, -omega6_batch.transpose(0, 2, 1)):
-        raise ValueError("omega6 must be antisymmetric")
-
-    # Extend omega6 to (N, 7, 7)
-    omega7_batch = np.zeros((batch_size, 7, 7), dtype=omega6_batch.dtype)
-    omega7_batch[:, :6, :6] = omega6_batch
-
-    # Broadcast and compute the 3-form wedge product
-    i, j, k = np.meshgrid(np.arange(7), np.arange(7), np.arange(7), indexing='ij')
-
-    # Compute each term: omega[i,j]*alpha[k], omega[j,k]*alpha[i], omega[k,i]*alpha[j]
-    term1 = omega7_batch[:, i, j] * alpha7_batch[:, k]
-    term2 = omega7_batch[:, j, k] * alpha7_batch[:, i]
-    term3 = omega7_batch[:, k, i] * alpha7_batch[:, j]
-
-    form3_batch = (1.0 / 3.0) * (term1 + term2 + term3)
-
-    return form3_batch
-
-
 def holomorphic_volume_form_to_real_tensor(c_batch):
     """
     Convert a complex coefficient c of dz^1 ^ dz^2 ^ dz^3 into a real 6x6x6 tensor 
@@ -177,6 +141,27 @@ def holomorphic_volume_form_to_real_tensor(c_batch):
     return Omega_real, Omega_imag
 
 
+def compute_gG2(G2_val):
+    # TODO: this function must be vectorized!
+    # Note that wedge_product is very slow
+    """
+    Compute the gG2 metric from the G2 structure 3-form.
+    See: https://arxiv.org/pdf/math/0702077 EQ (2.3)
+    """
+    B = np.zeros((7, 7))
+    for i in range(7):
+        for j in range(7):
+            if i <= j:  # avoid double counting by only computing upper triangle       
+                B[i,j] = wedge_product(G2_val[i,:,:], wedge_product(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
+    # Make B symmetric
+    B = B + B.T - np.diag(B.diagonal())             
+    detB = np.linalg.det(B)
+    factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
+    gG2 = factor * B
+    
+    return gG2
+
+
 ###########################################################################
 # Patch transformation functions
 
@@ -200,98 +185,190 @@ def PatchChange_G2form(coords, forms, input_patch=0, output_patch=0):
 
 ###########################################################################
 # Function to reduce forms tensors to their dof vectors 
-
-def is_antisymmetric_tensor(tensor, atol=1e-8):
+def form_to_vec(tensor):
     """
-    Checks antisymmetry under adjacent index swaps.
-    """
-    shape = tensor.shape
-    rank = tensor.ndim
+    Extracts unique components of a batch of forms represented as antisymmetric tensors.
 
-    if not all(s == shape[0] for s in shape):
-        raise ValueError("Tensor must have equal dimensions along all axes.")
+    Args:
+        tensor: tf.Tensor of shape (B, D, D, ..., D), where B=batch size and
+                rank = number of antisymmetric tensor dimensions.
+
+    Returns:
+        tf.Tensor of shape (B, N) where N = number of unique components,
+        containing the extracted unique antisymmetric components for each batch.
+    """
+    batch_size = tf.shape(tensor)[0]
+    rank = tensor.shape.rank - 1
+    D = tensor.shape[1]
     
-    for i in range(rank - 1):
-        axes = list(range(rank))
-        axes[i], axes[i + 1] = axes[i + 1], axes[i]
-        transposed = np.transpose(tensor, axes)
-        if not np.allclose(transposed, -tensor, atol=atol):
-            return False
-    return True
+    # Generate unique index combinations for antisymmetric components 
+    unique_indices = tf.constant(
+        list(combinations(range(D), rank))
+    )  # shape (N, rank)
 
-def antisymmetric_tensor_to_vector(tensor):
+    # Repeat batch indices for each unique index
+    batch_indices = tf.repeat(tf.range(batch_size), tf.shape(unique_indices)[0])  # shape (B*N,)
+
+    # Tile unique indices for each batch item
+    tiled_unique_indices = tf.tile(unique_indices, [batch_size, 1])  # shape (B*N, rank)
+
+    # Concatenate batch indices and unique indices to form full indices
+    full_indices = tf.concat([tf.expand_dims(batch_indices, axis=1), tiled_unique_indices], axis=1)  # shape (B*N, rank+1)
+
+    # Gather the selected elements
+    gathered = tf.gather_nd(tensor, full_indices)  # shape (B*N,)
+
+    # Reshape to (B, N)
+    result = tf.reshape(gathered, (batch_size, tf.shape(unique_indices)[0]))
+
+    return result
+
+
+def compute_parity(p):
     """
-    Extracts the unique components of an antisymmetric tensor
-    and returns them in a 1D vector.
+    Compute parity (+1 or -1) of each permutation in batch p.
+    p: tf.Tensor of shape (batch_size, k), dtype int32 or int64
+    Returns:
+        tf.Tensor of shape (batch_size,), dtype float32 with +1 or -1 values
     """
-    if not is_antisymmetric_tensor(tensor):
-        raise ValueError("Tensor is not antisymmetric under adjacent swaps.")
+    k = tf.shape(p)[1]
 
-    n = tensor.shape[0]
-    rank = tensor.ndim
-    unique_indices = []
+    # Expand dims to compare all pairs i,j
+    p1 = tf.expand_dims(p, 2)  # (batch_size, k, 1)
+    p2 = tf.expand_dims(p, 1)  # (batch_size, 1, k)
 
-    # Use strictly increasing index tuples
-    for idx in np.ndindex(*tensor.shape):
-        if all(idx[i] < idx[i+1] for i in range(rank - 1)):
-            unique_indices.append(idx)
+    # Create mask for upper triangle (i < j)
+    mask = tf.linalg.band_part(tf.ones((k, k), dtype=tf.bool), 0, -1)  # upper triangle incl diagonal
+    mask = tf.linalg.set_diag(mask, tf.zeros(k, dtype=tf.bool))       # zero diagonal
+    # Now mask[i,j] == True iff i < j
 
-    values = np.array([tensor[idx] for idx in unique_indices])
-    return values
+    # Compare pairs where i < j and count inversions: p1 > p2
+    inversions = tf.reduce_sum(
+        tf.cast(tf.logical_and(p1 > p2, mask), tf.int32),
+        axis=[1, 2]
+    )
 
-def permutation_sign(original, permuted):
+    parity = tf.where(inversions % 2 == 0, 1.0, -1.0)
+    return parity
+
+
+def vec_to_form(vectors, n, k):
     """
-    Calculate the sign (+1 or -1) of the permutation.
-    This is the parity of the permutation.
-    """
-    # Convert to list of swaps to sort
-    perm = list(permuted)
-    orig = list(original)
-    sign = 1
-    for i in range(len(perm)):
-        for j in range(i + 1, len(perm)):
-            if perm[i] > perm[j]:
-                sign *= -1
-    return sign
-
-def vector_to_antisymmetric_tensor(vector, n, k):
-    """
-    Reconstruct a full antisymmetric tensor of shape (n,)*k
-    from a 1D vector of its unique entries.
+    Reconstruct a full antisymmetric tensor of shape 
+    (batch_size, n, n, ..., n) (k times) from a batch of 1D vectors of their
+    respective unique entries.
     
     Args:
-        vector (np.ndarray): 1D array of length C(n, k)
+        vector (np.ndarray): (batch_size, C(n,k)).
         n (int): dimension of each axis
         k (int): rank of the tensor (number of axes)
     
     Returns:
-        np.ndarray: reconstructed antisymmetric tensor of shape (n,)*k
+        np.ndarray: reconstructed antisymmetric tensor of shape (batch_size, n, n, ..., n) (k times).
     """
+    batch_size = tf.shape(vectors)[0]
     expected_length = comb(n, k)
-    if len(vector) != expected_length:
-        raise ValueError(f"Expected vector of length {expected_length}, got {len(vector)}")
-
-    tensor = np.zeros((n,) * k)
     
-    # Generate strictly increasing index tuples (unique positions)
-    increasing_indices = [
-        idx for idx in np.ndindex((n,) * k)
-        if all(idx[i] < idx[i+1] for i in range(k - 1))
-    ]
+    # Check length dimension matches
+    if vectors.shape[1] != expected_length:
+        raise ValueError(f"Expected vector length {expected_length}, got {vectors.shape[1]}")
 
-    for value, base_idx in zip(vector, increasing_indices):
-        # For each permutation of the base index
-        for perm in set(permutations(base_idx)):
-            # Compute the parity (sign) of the permutation
-            sign = permutation_sign(base_idx, perm)
-            tensor[perm] = sign * value
+    # 1. Get all strictly increasing indices (C(n,k), k)
+    unique_indices = np.array(list(combinations(range(n), k)))  # shape (C(n,k), k)
+
+    # 2. Precompute all permutations of unique indices and parity signs
+    perms_list = []
+    base_indices_repeated = []
+    for base_idx in unique_indices:
+        perms_list.extend(permutations(base_idx))
+        base_indices_repeated.extend([base_idx] * factorial(k))
+
+    perms_np = np.array(perms_list, dtype=np.int32)  # (C(n,k)*k!, k)
+    base_indices_np = np.array(base_indices_repeated, dtype=np.int32)  # same shape
+    perms_tf = tf.constant(perms_np)
+
+    # 3. Compute parity for all permutations
+    parity = compute_parity(perms_tf)  # (C(n,k)*k!,)
+
+    # 4. For each vector in batch, gather values for base indices, then multiply by parity for each perm
+    # Map from base index to vector index:
+    # create a lookup dict to map tuple(base_idx) to vector idx
+    base_idx_to_vec_idx = {tuple(idx): i for i, idx in enumerate(unique_indices)}
+
+    # Convert base_indices_tf to vector indices:
+    base_idx_tuples = [tuple(idx) for idx in base_indices_np]  # just reuse from np array
+
+    # Build vector indices array for base_indices_tf
+    vec_indices_for_perms = tf.constant([base_idx_to_vec_idx[t] for t in base_idx_tuples], dtype=tf.int32)  # (C(n,k)*k!,)
+
+    # Expand batch dimension:
+    vec_indices_for_perms_batch = tf.tile(tf.expand_dims(vec_indices_for_perms, 0), [batch_size, 1])  # (batch_size, C(n,k)*k!)
+
+    # Gather base values from vectors:
+    base_values = tf.gather(vectors, vec_indices_for_perms_batch, batch_dims=1)  # (batch_size, C(n,k)*k!)
+
+    # Multiply by parity:
+    signed_values = base_values * parity  # broadcast parity over batch_size
+
+    # 5. Scatter signed_values to final tensor shape:
+    output_shape = tf.concat([[batch_size], [n]*k], axis=0)  # (batch_size, n, n, ..., n)
+
+    # Flatten indices for scatter_nd:
+    # perms_tf shape (C(n,k)*k!, k)
+    # For batch indexing, prepend batch dimension indices:
+    batch_indices = tf.repeat(tf.range(batch_size), repeats=tf.shape(perms_tf)[0])  # (batch_size * C(n,k)*k!)
+    perms_tiled = tf.tile(perms_tf, [batch_size, 1])  # same shape
+
+    scatter_indices = tf.stack([batch_indices, perms_tiled[:, 0], perms_tiled[:, 1], perms_tiled[:, 2]], axis=1) if k == 3 else \
+                      tf.concat([tf.expand_dims(batch_indices, 1), perms_tiled], axis=1)
+    # For general k, use the concat version above
+
+    # Scatter the signed values:
+    signed_values_flat = tf.reshape(signed_values, [-1])
+    output_tensor = tf.scatter_nd(scatter_indices, signed_values_flat, output_shape)
+
+    return output_tensor
+
+
+
+
+
+###########################################################################
+### OLD FUNCTIONS ###
+def wedge_form2_with_form1(omega6_batch, alpha7_batch):
+    """
+    Vectorized wedge product of a batch of 6x6 antisymmetric 2-forms with a batch of 7D 1-forms.
     
-    return tensor
+    Args:
+        omega6_batch (np.ndarray): shape (batch_size, 6, 6), antisymmetric 2-forms.
+        alpha7_batch (np.ndarray): shape (batch_size, 7), 1-forms.
 
-def form_to_vec(form):
-    flattened_form = antisymmetric_tensor_to_vector(form)
-    return flattened_form
+    Returns:
+        form3_batch (np.ndarray): shape (batch_size, 7, 7, 7), antisymmetric 3-forms.
+    """
+    batch_size = omega6_batch.shape[0]
+    
+    assert omega6_batch.shape == (batch_size, 6, 6), "omega6 must be (N, 6, 6)"
+    assert alpha7_batch.shape == (batch_size, 7), "alpha7 must be (N, 7)"
 
+    # Check antisymmetry
+    if not np.allclose(omega6_batch, -omega6_batch.transpose(0, 2, 1)):
+        raise ValueError("omega6 must be antisymmetric")
 
+    # Extend omega6 to (N, 7, 7)
+    omega7_batch = np.zeros((batch_size, 7, 7), dtype=omega6_batch.dtype)
+    omega7_batch[:, :6, :6] = omega6_batch
+
+    # Broadcast and compute the 3-form wedge product
+    i, j, k = np.meshgrid(np.arange(7), np.arange(7), np.arange(7), indexing='ij')
+
+    # Compute each term: omega[i,j]*alpha[k], omega[j,k]*alpha[i], omega[k,i]*alpha[j]
+    term1 = omega7_batch[:, i, j] * alpha7_batch[:, k]
+    term2 = omega7_batch[:, j, k] * alpha7_batch[:, i]
+    term3 = omega7_batch[:, k, i] * alpha7_batch[:, j]
+
+    form3_batch = (1.0 / 3.0) * (term1 + term2 + term3)
+
+    return form3_batch
 
 

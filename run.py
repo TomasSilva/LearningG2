@@ -1,6 +1,7 @@
 '''Run file for the G2-structure learning'''
 # Import libraries
 import os
+import sys
 import yaml
 import numpy as np
 import tensorflow as tf
@@ -134,7 +135,9 @@ def main(hyperparameters_file):
 if __name__ == "__main__":
     # Supervised run hyperparameters
     save = True   #...whether to save the trained supervised model
-    save_flag = 'test' #...some int to append to file names to differentiate supervised models
+    save_flag = 'test' #...the name of the trained supervised model
+    if len(sys.argv) > 1:
+        save_flag = sys.argv[1]
 
     # Define and train the model
     hyperparams_filepath = os.path.dirname(__file__)+'/hyperparameters/hps.yaml'
