@@ -1,8 +1,9 @@
 '''Geometric functions'''
 # Import libraries
 import numpy as np
-from itertools import product, permutations
 import tensorflow as tf
+from math import comb
+from itertools import product, permutations
 
 ###########################################################################
 # Coordinate change functions
@@ -199,11 +200,96 @@ def PatchChange_G2form(coords, forms, input_patch=0, output_patch=0):
 
 ###########################################################################
 # Function to reduce forms tensors to their dof vectors 
-def form_to_vec(form):
-    ### write this
-    flattened_form = tf.reshape(form, [form.shape[0], -1])
-    print(flattened_form.shape)
 
+def is_antisymmetric_tensor(tensor, atol=1e-8):
+    """
+    Checks antisymmetry under adjacent index swaps.
+    """
+    shape = tensor.shape
+    rank = tensor.ndim
+
+    if not all(s == shape[0] for s in shape):
+        raise ValueError("Tensor must have equal dimensions along all axes.")
+    
+    for i in range(rank - 1):
+        axes = list(range(rank))
+        axes[i], axes[i + 1] = axes[i + 1], axes[i]
+        transposed = np.transpose(tensor, axes)
+        if not np.allclose(transposed, -tensor, atol=atol):
+            return False
+    return True
+
+def antisymmetric_tensor_to_vector(tensor):
+    """
+    Extracts the unique components of an antisymmetric tensor
+    and returns them in a 1D vector.
+    """
+    if not is_antisymmetric_tensor(tensor):
+        raise ValueError("Tensor is not antisymmetric under adjacent swaps.")
+
+    n = tensor.shape[0]
+    rank = tensor.ndim
+    unique_indices = []
+
+    # Use strictly increasing index tuples
+    for idx in np.ndindex(*tensor.shape):
+        if all(idx[i] < idx[i+1] for i in range(rank - 1)):
+            unique_indices.append(idx)
+
+    values = np.array([tensor[idx] for idx in unique_indices])
+    return values
+
+def permutation_sign(original, permuted):
+    """
+    Calculate the sign (+1 or -1) of the permutation.
+    This is the parity of the permutation.
+    """
+    # Convert to list of swaps to sort
+    perm = list(permuted)
+    orig = list(original)
+    sign = 1
+    for i in range(len(perm)):
+        for j in range(i + 1, len(perm)):
+            if perm[i] > perm[j]:
+                sign *= -1
+    return sign
+
+def vector_to_antisymmetric_tensor(vector, n, k):
+    """
+    Reconstruct a full antisymmetric tensor of shape (n,)*k
+    from a 1D vector of its unique entries.
+    
+    Args:
+        vector (np.ndarray): 1D array of length C(n, k)
+        n (int): dimension of each axis
+        k (int): rank of the tensor (number of axes)
+    
+    Returns:
+        np.ndarray: reconstructed antisymmetric tensor of shape (n,)*k
+    """
+    expected_length = comb(n, k)
+    if len(vector) != expected_length:
+        raise ValueError(f"Expected vector of length {expected_length}, got {len(vector)}")
+
+    tensor = np.zeros((n,) * k)
+    
+    # Generate strictly increasing index tuples (unique positions)
+    increasing_indices = [
+        idx for idx in np.ndindex((n,) * k)
+        if all(idx[i] < idx[i+1] for i in range(k - 1))
+    ]
+
+    for value, base_idx in zip(vector, increasing_indices):
+        # For each permutation of the base index
+        for perm in set(permutations(base_idx)):
+            # Compute the parity (sign) of the permutation
+            sign = permutation_sign(base_idx, perm)
+            tensor[perm] = sign * value
+    
+    return tensor
+
+def form_to_vec(form):
+    flattened_form = antisymmetric_tensor_to_vector(form)
     return flattened_form
 
 
