@@ -1,9 +1,10 @@
-# LearningG2
-Setup:
+# Learning G2-Structure 3-forms
+## Setup:
 ```
 python setup.py build_ext --inplace
 ```
 
+## Running:
 To train the CY metric model run in the CLI in this repo:  
 ```
 python3 -m models.cy_model
@@ -13,3 +14,8 @@ python3 -m models.cy_model
 python3 -m run
 ```
 ...which outputs a saved model into the `runs` folder.  
+
+## BibTeX Citation:
+``` 
+raise NotImplementedError("Paper yet to be published.")
+```
