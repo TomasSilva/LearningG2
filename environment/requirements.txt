@@ -2,3 +2,4 @@ numpy
 cython
 tensorflow
 matplotlib
+yaml
