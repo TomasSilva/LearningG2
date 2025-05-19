@@ -22,11 +22,11 @@ if __name__ == '__main__':
     ambient = np.array([4])
     
     pg = PointGenerator(monomials, coefficients, kmoduli, ambient)
-    points = pg.generate_points(100)
+    #points = pg.generate_points(100)
     
     # Save the training data
     dirname = os.path.dirname(__file__)+'/cy_models/train_data'
-    n_p = 100000
+    n_p = 200000
     kappa = pg.prepare_dataset(n_p, dirname)
     data = np.load(os.path.join(dirname, 'dataset.npz'))
     pg.prepare_basis(dirname, kappa=kappa)
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     nlayer = 3
     nHidden = 64
     act = 'gelu'
-    nEpochs = 10
+    nEpochs = 200
     bSizes = [64, 50000]
 
     # Define the cymetric NN model (learnt via the Kahler potential)

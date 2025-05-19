@@ -30,7 +30,7 @@ def main(hyperparameters_file):
     
     if hp["validate"]:
         val_sample, val_3form = LinkSample(
-            hp.num_val_samples,
+            hp["num_val_samples"],
         )
         val_sample_tf = tf.convert_to_tensor(val_sample)
         val_3form_tf = tf.convert_to_tensor(val_3form)

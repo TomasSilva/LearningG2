@@ -16,7 +16,7 @@ overlap_upperwidth: 0.1
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 10000
+num_samples: 200000
 
 ###############################################################################
 # Model set-up
@@ -40,7 +40,7 @@ use_bias: true
 ###############################################################################
 # Training set-up
 # Number of training epochs
-epochs: 100
+epochs: 200
 
 # Batch size for training
 batch_size: 100
@@ -52,7 +52,7 @@ min_learning_rate: 0.005
 # Validation hyperparameters
 validate: false
 val_print: false
-num_val_samples: 2000
+num_val_samples: 500
 val_batch_size: 100
 
 # Verbosity level for print logging (e.g., 0 for silent, 1 for progress messages)
