@@ -6,7 +6,7 @@
 dim: 7
 
 # Set the number of patches (current functionality for 1 or 2)
-n_patches: 1 ###need patch_change funcs before make 5
+n_patches: 1 ###need patch_change functions before make 5
 
 # Patching size
 # ...determines the distance from the radial midpoint to the outer edge of the 
