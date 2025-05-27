@@ -24,14 +24,14 @@ def main(hyperparameters_file):
     ### Data set-up ###
     # Create training and validation samples
     train_sample, train_output = LinkSample(
-        hp["num_samples"], hp
+        hp["num_samples"], metric=hp["metric"]
     )
     train_sample_tf = tf.convert_to_tensor(train_sample)
     train_output_tf = tf.convert_to_tensor(train_output)
     
     if hp["validate"]:
         val_sample, val_output = LinkSample(
-            hp["num_val_samples"], hp
+            hp["num_val_samples"], metric=hp["metric"]
         )
         val_sample_tf = tf.convert_to_tensor(val_sample)
         val_output_tf = tf.convert_to_tensor(val_output)
