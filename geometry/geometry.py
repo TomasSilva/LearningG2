@@ -3,6 +3,7 @@
 import numpy as np
 import tensorflow as tf
 from itertools import product, permutations
+from geometry.compression import vec_to_form
 from geometry.wedge_product import wedge_product
 
 ###########################################################################
@@ -150,6 +151,59 @@ def compute_gG2(G2_val):
     
     return gG2
 
+
+###########################################################################
+# Functions for computing the exterior derivatives of the trained NN geometric functions
+def exterior_derivative(model, inputs, form_output=True):
+    """
+    Computes the exterior derivative (as a batched Jacobian) of a model's output 
+    with respect to its inputs, and optionally repackages it into a fully antisymmetric 
+    4-form tensor.
+
+    This function calculates ∂fᵢ/∂xⱼ for each output component of the model with respect 
+    to each input component using TensorFlow's batch Jacobian. If `form_output=True`, 
+    it interprets the Jacobian as a 3-form valued 1-form and repackages it into a 
+    fully antisymmetric tensor of shape (batch_size, 7, 7, 7, 7).
+
+    Args:
+        model (tf.keras.Model or callable): A model or function mapping inputs of shape 
+            (batch_size, input_dim) to outputs of shape (batch_size, output_dim).
+        inputs (tf.Tensor): A 2D tensor of shape (batch_size, input_dim), representing 
+            a batch of input vectors.
+        form_output (bool): If True, return the exterior derivative as an antisymmetric 
+            4-form of shape (batch_size, 7, 7, 7, 7). If False, return the raw Jacobian 
+            of shape (batch_size, output_dim, input_dim).
+
+    Returns:
+        tf.Tensor:
+            - If `form_output=True`: Tensor of shape (batch_size, 7, 7, 7, 7), representing 
+              the antisymmetric 4-form structure.
+            - If `form_output=False`: Tensor of shape (batch_size, output_dim, input_dim), 
+              the raw Jacobian.
+    """
+    inputs = tf.convert_to_tensor(inputs)
+
+    with tf.GradientTape() as tape:
+        tape.watch(inputs)
+        outputs = model(inputs)  # Shape: (batch_size, output_dim)
+
+    jacobians = tape.batch_jacobian(outputs, inputs)  # Shape: (batch_size, output_dim, input_dim)
+    
+    # Repackage the data into the (batch, 7, 7, 7, 7) form
+    if form_output:
+        components = []
+        for i in range(7):
+            antisym_tensor = vec_to_form(jacobians[:, :, i], n=7, k=3)  # shape: (batch_size, 7, 7, 7)
+            components.append(antisym_tensor)  # 7 of these
+            
+        # Stack them along a new final axis
+        dg2_form = tf.stack(components, axis=-1)
+        
+        return dg2_form
+        
+    # Or just return the independent derivatives
+    else:
+        return jacobians
 
 ###########################################################################
 ### OLD FUNCTIONS ###

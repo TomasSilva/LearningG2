@@ -111,7 +111,7 @@ def vec_to_form(vectors, n, k):
     perms_tf = tf.constant(perms_np)
 
     # 3. Compute parity for all permutations
-    parity = compute_parity(perms_tf)  # (C(n,k)*k!,)
+    parity = tf.cast(compute_parity(perms_tf), dtype=vectors.dtype)
 
     # 4. For each vector in batch, gather values for base indices, then multiply by parity for each perm
     # Map from base index to vector index:
