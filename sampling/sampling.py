@@ -7,7 +7,7 @@ import yaml
 import pickle as pickle
 
 # Import functions
-from geometry.geometry import CoordChange_C5R10, kahler_form_real, holomorphic_volume_form_to_real_tensor
+from geometry.geometry import CoordChange_C5R10, kahler_form_real, holomorphic_volume_form_to_real_tensor, compute_gG2
 from geometry.wedge_product import wedge_product
 
 # Import cymetric functions
@@ -17,7 +17,7 @@ from cymetric.models.tfmodels import PhiFSModel
 
 ###########################################################################
 # Function to generate the Link data (local pt coordinates and the G2 3-form)
-def LinkSample(n_pts): ###change whats passed here?
+def LinkSample(n_pts, hp): 
     # Import the cymodel config info
     with open(os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_model_config.yaml', 'r') as f:
         config = yaml.unsafe_load(f)
@@ -67,17 +67,23 @@ def LinkSample(n_pts): ###change whats passed here?
     #...below is the old code (delete when happy)
     #g2form_R7 = wedge_form2_with_form1(kahler_form_R6, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)) 
     ###
-    
     g2form_R7[:, :6, :6, :6] += hvf_i
+    
+    if not hp["metric"]:
+        return (link_points_local, g2form_R7)
 
-    return (link_points_local, g2form_R7)
+    else:
+        g2metric_R7 = np.array([compute_gG2(g2form) for g2form in g2form_R7])
+        return (link_points_local, g2metric_R7)
+
+    
 
 ###########################################################################
 if __name__ == '__main__':
     
     # Generate a link data sample
     num_pts = int(1e2)
-    link_pts, link_phis = LinkSample(num_pts)
+    link_pts, link_phis = LinkSample(num_pts, {"metric": False})
     
     print(f'Link pts shape:     {link_pts.shape}\nLink 3-forms shape: {link_phis.shape}')
     

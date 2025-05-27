@@ -15,7 +15,7 @@ class PatchSubModel(tf.keras.Model):
         self.set_serializable_hp()
         
         # Define subnetwork architecture
-        inputs = tf.keras.layers.Input(shape=(self.hp["dim"],))
+        inputs = tf.keras.layers.Input(shape=(7,))
         x = tf.keras.layers.Dense(
             self.hp["n_hidden"], activation=self.hp["activations"], use_bias=self.hp["use_bias"]
         )(inputs)
@@ -62,12 +62,15 @@ class GlobalModel(tf.keras.Model):
         self.hp = hp
         self.serializable_hp = None
         self.set_serializable_hp()
-        self.dim = self.hp["dim"]
         self.n_patches = self.hp["n_patches"]
+        self.metric = self.hp["metric"]
 
         # Compute the number of independent metric entries, this is the number 
         # of vielbein entries used as the model outputs for each patch
-        n_out = comb(self.dim, 3) #...rank hardcoded as 3 here
+        if self.metric:
+            n_out = 28 #...upper triangle of symmetric matrix has: 7 * (7 + 1) / 2 entries
+        else:
+            n_out = comb(7, 3) #...rank hardcoded as 3 here
 
         # Define submodels for each patch
         self.patch_submodels = [PatchSubModel(self.hp, n_out) for _ in range(self.n_patches)]

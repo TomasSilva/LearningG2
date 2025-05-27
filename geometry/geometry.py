@@ -2,6 +2,7 @@
 # Import libraries
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 from math import comb, pow, factorial
 from itertools import product, permutations, combinations
 from geometry.wedge_product import wedge_product
@@ -156,16 +157,28 @@ def compute_gG2(G2_val):
     # Make B symmetric
     B = B + B.T - np.diag(B.diagonal())             
     detB = np.linalg.det(B)
-    factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
-    gG2 = factor * B
+
+    
+    ### 
+    # Warning if excessive clipping
+    if detB < -1e-6:
+        raise ValueError("detB ({detB}) negative...")
+    # Clip det(B) if negative (due to floating pt error)
+    detB = max(detB, 0)
+    
+    #...below gives division by 0, basically shouldn't be getting singular B !?
+    #factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
+    #gG2 = factor * B
+    
+    gG2 = B ###delete when above fixed
+    ###
+    
     
     return gG2
 
 
 ###########################################################################
 # Patch transformation functions
-
-###for coords
 def PatchChange_Coords(coords, input_patch=0, output_patch=0):
     if input_patch == output_patch:
         return coords
@@ -179,8 +192,13 @@ def PatchChange_G2form(coords, forms, input_patch=0, output_patch=0):
     else:
         ### write this (patches labelled 0-4 with 0 the first patch used as input)
         return forms
-
-###for general rank r tensor
+    
+def PatchChange_G2metric(coords, metrics, input_patch=0, output_patch=0):
+    if input_patch == output_patch:
+        return metrics
+    else:
+        ### write this (patches labelled 0-4 with 0 the first patch used as input)
+        return metrics
 
 
 ###########################################################################
@@ -330,7 +348,49 @@ def vec_to_form(vectors, n, k):
     return output_tensor
 
 
+def vec_to_metric(lower_triangular_vector):
+    """
+    Reconstructs a (batch of) full positive-definite matrix from its vectorized lower-triangular Cholesky factor.
 
+    This function assumes the input vector represents a lower-triangular matrix in 
+    compact (vectorized) form, such as one created by `tfp.math.fill_triangular_inverse`. 
+    It then reconstructs the full matrix as L @ Lᵀ.
+
+    Args:
+        lower_triangular_vector (tf.Tensor): A 1D tensor containing the lower-triangular 
+            elements of a matrix in a compact vectorized form.
+
+    Returns:
+        tf.Tensor: A full positive-definite matrix reconstructed from the Cholesky factor.
+    """
+    lower_triangular_matrix = tfp.math.fill_triangular(lower_triangular_vector)
+    full_matrix = tf.matmul(
+        lower_triangular_matrix, lower_triangular_matrix, transpose_b=True
+    )
+
+    return full_matrix
+
+
+def metric_to_vec(full_matrix):
+    """
+    Converts a (batch of) full positive-definite matrix to a vectorized lower-triangular Cholesky factor.
+    
+    This function performs a Cholesky decomposition on the input matrix and then 
+    returns the lower-triangular factor in vectorized (compact) form.
+    
+    Args:
+        full_matrix (tf.Tensor): A symmetric positive-definite matrix (or batch of matrices).
+    
+    Returns:
+        tf.Tensor: A 1D tensor containing the lower-triangular elements of the Cholesky 
+        factor in vectorized form.
+    """
+    lower_triangular_matrices = tf.linalg.cholesky(full_matrix)
+    lower_triangular_vector = tfp.math.fill_triangular_inverse(
+        lower_triangular_matrices
+    )
+
+    return lower_triangular_vector
 
 
 ###########################################################################

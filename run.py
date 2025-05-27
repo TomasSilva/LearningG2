@@ -9,7 +9,8 @@ import tensorflow as tf
 # Import functions
 from models.model import GlobalModel
 from sampling.sampling import LinkSample
-from geometry.geometry import PatchChange_Coords, PatchChange_G2form, form_to_vec
+from geometry.geometry import form_to_vec, metric_to_vec
+from geometry.geometry import PatchChange_Coords, PatchChange_G2form, PatchChange_G2metric
 
 # Main body function for performing the metric training
 def main(hyperparameters_file):
@@ -22,61 +23,75 @@ def main(hyperparameters_file):
     ###########################################################################
     ### Data set-up ###
     # Create training and validation samples
-    train_sample, train_3form = LinkSample(
-        hp["num_samples"],
+    train_sample, train_output = LinkSample(
+        hp["num_samples"], hp
     )
     train_sample_tf = tf.convert_to_tensor(train_sample)
-    train_3form_tf = tf.convert_to_tensor(train_3form)
+    train_output_tf = tf.convert_to_tensor(train_output)
     
     if hp["validate"]:
-        val_sample, val_3form = LinkSample(
-            hp["num_val_samples"],
+        val_sample, val_output = LinkSample(
+            hp["num_val_samples"], hp
         )
         val_sample_tf = tf.convert_to_tensor(val_sample)
-        val_3form_tf = tf.convert_to_tensor(val_3form)
-
-    train_sample_inputs = [train_sample_tf] 
-    ### Only need below if train_sample_inputs[i] used in PatchChange_3form, otherwise delete...
-    if hp["n_patches"] > 1:
-        train_sample_inputs += [PatchChange_Coords(
-            train_sample_tf,
-            input_patch=0,
-            output_patch=i,
-            ) for i in range(1,5)
-            ]
+        val_output_tf = tf.convert_to_tensor(val_output)
     
-    train_3forms = [train_3form_tf]
+    train_outputs = [train_output_tf]
     if hp["n_patches"] > 1:
-        train_3forms += [PatchChange_G2form(
-            train_sample_tf, 
-            train_3form_tf, 
-            output_patch=o_patch,
-            ) for o_patch in range(1,5)
-            ]
-
-    # Generate validation data if required ###
-    if hp["validate"]:
-        #val_sample_inputs = ...
-        val_3forms = [val_3form_tf]
-        if hp["n_patches"] > 1:
-            val_3forms += [PatchChange_G2form(
-                val_sample_tf, 
-                val_3form_tf, 
+        if not hp["metric"]:
+            train_outputs += [PatchChange_G2form(
+                train_sample_tf, 
+                train_output_tf, 
                 output_patch=o_patch,
                 ) for o_patch in range(1,5)
                 ]
-        raise NotImplementedError("Validation hasn't been implemented yet!")
+        else:
+            train_outputs += [PatchChange_G2metric(
+                train_sample_tf, 
+                train_output_tf, 
+                output_patch=o_patch,
+                ) for o_patch in range(1,5)
+                ]
+
+    # Generate validation data if required
+    if hp["validate"]:
+        val_outputs = [val_output_tf]
+        if hp["n_patches"] > 1:
+            if not hp["metric"]:
+                val_outputs += [PatchChange_G2form(
+                    val_sample_tf, 
+                    val_output_tf, 
+                    output_patch=o_patch,
+                    ) for o_patch in range(1,5)
+                    ]
+            else:
+                val_outputs += [PatchChange_G2metric(
+                    val_sample_tf, 
+                    val_output_tf, 
+                    output_patch=o_patch,
+                    ) for o_patch in range(1,5)
+                    ]
+            
         
     # Convert to dof vectors (vielbeins)
-    train_3forms_vecs = [form_to_vec(tsm) for tsm in train_3forms]
-    train_3forms_vecs_tf = tf.convert_to_tensor(tf.concat(train_3forms_vecs,axis=1))
+    if not hp["metric"]:
+        train_outputs_vecs = [form_to_vec(tsm) for tsm in train_outputs]
+        train_outputs_vecs_tf = tf.convert_to_tensor(tf.concat(train_outputs_vecs, axis=1))
+    else:
+        train_outputs_vecs = [metric_to_vec(tsm) for tsm in train_outputs]
+        train_outputs_vecs_tf = tf.convert_to_tensor(tf.concat(train_outputs_vecs, axis=1))
+
     if hp["validate"]:
-        val_3forms_vecs = [form_to_vec(vsm) for vsm in val_3forms]
-        val_3forms_vecs_tf = tf.convert_to_tensor(tf.concat(val_3forms_vecs,axis=1))
-        val_data = (val_sample_tf, val_3forms_vecs_tf)
+        if not hp["metric"]:
+            val_outputs_vecs = [form_to_vec(vsm) for vsm in val_outputs]
+            val_outputs_vecs_tf = tf.convert_to_tensor(tf.concat(val_outputs_vecs, axis=1))
+        else:
+            val_outputs_vecs = [metric_to_vec(vsm) for vsm in val_outputs]
+            val_outputs_vecs_tf = tf.convert_to_tensor(tf.concat(val_outputs_vecs, axis=1))
+        val_data = (val_sample_tf, val_outputs_vecs_tf)
     else:
         val_sample_tf = None
-        val_3forms_vecs_tf = None
+        val_outputs_vecs_tf = None
         val_data = None
         
     ###########################################################################
@@ -114,7 +129,7 @@ def main(hyperparameters_file):
     # Train!
     loss_hist = model.fit(
         train_sample_tf,
-        train_3forms_vecs_tf,
+        train_outputs_vecs_tf,
         batch_size=hp["batch_size"],
         epochs=hp["epochs"],
         verbose=hp["verbosity"],
@@ -126,7 +141,7 @@ def main(hyperparameters_file):
         model,
         loss_hist,
         train_sample_tf,
-        train_3forms_vecs_tf,
+        train_outputs_vecs_tf,
         val_data,
     )
 
@@ -135,7 +150,7 @@ def main(hyperparameters_file):
 if __name__ == "__main__":
     # Supervised run hyperparameters
     save = True   #...whether to save the trained supervised model
-    save_flag = 'test' #...the name of the trained supervised model
+    save_flag = 'test_metric' #...the name of the trained supervised model
     if len(sys.argv) > 1:
         save_flag = sys.argv[1]
 
@@ -146,5 +161,5 @@ if __name__ == "__main__":
     
     # Save the model
     if save == True:
-        network.save(os.path.dirname(__file__)+f'/runs/supervised_model_{save_flag}.keras')
+        network.save(os.path.dirname(__file__)+f'/runs/link_model_{save_flag}.keras')
     

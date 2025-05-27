@@ -2,8 +2,8 @@
 
 ###############################################################################
 # Geometric set-up
-# Dimensionality of the data (e.g., 2 for 2D data)
-dim: 7
+# Select whether to learn the G2-metric
+metric: true
 
 # Set the number of patches (current functionality for 1 or 2)
 n_patches: 1 ###need patch_change functions before make 5
@@ -16,7 +16,7 @@ overlap_upperwidth: 0.1
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 200000
+num_samples: 2000
 
 ###############################################################################
 # Model set-up
