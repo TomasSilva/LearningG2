@@ -72,7 +72,8 @@ if __name__ == '__main__':
     
     # Save the trained model
     save_filepath = os.path.dirname(__file__)+'/cy_models/'
-    phimodel.save(save_filepath+'cy_metric_model.keras')
+    cymodel_name = '_test'
+    phimodel.save(save_filepath+'cy_metric_model'+cymodel_name+'.keras')
     
     # Save the cymetric hyperparameters
     config = {
@@ -87,5 +88,5 @@ if __name__ == '__main__':
         'kmoduli': kmoduli,
         'ambient': ambient
     }
-    with open(save_filepath+'cy_model_config.yaml', 'w') as f:
+    with open(save_filepath+'cy_model_config'+cymodel_name+'.yaml', 'w') as f:
         yaml.dump(config, f)

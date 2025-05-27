@@ -8,7 +8,7 @@ from geometry.wedge_product import wedge_product
 
 ###########################################################################
 # Functions related to the CY-structure
-def hermitian_to_real_symmetric(H_batch):
+def hermitian_to_riemannian_real(H_batch):
     """
     Vectorized conversion of a batch of 3x3 Hermitian matrices to 6x6 real symmetric matrices.
     Real coordinates arranged: (x1, x2, ..., y1, y2, ...).
@@ -32,14 +32,10 @@ def hermitian_to_real_symmetric(H_batch):
     lower = np.concatenate((B,  A), axis=2)  # shape: (batch_size, 3, 6)
     G_batch = np.concatenate((upper, lower), axis=1)  # shape: (batch_size, 6, 6)
 
-    # Reorder axes: (x1, y1, x2, y2, x3, y3) → (x1, x2, x3, y1, y2, y3)
-    perm = [0, 2, 4, 1, 3, 5]
-    G_batch = G_batch[:, perm][:, :, perm]
-
     return G_batch
 
 
-def kahler_form_real(H_batch):
+def hermitian_to_kahler_real(H_batch):
     """
     Vectorized Kähler form computation for a batch of 3x3 Hermitian matrices.
     Real coordinates arranged: (x1, x2, ..., y1, y2, ...).
@@ -56,7 +52,7 @@ def kahler_form_real(H_batch):
     if not np.allclose(H_batch, H_batch.conj().transpose(0, 2, 1)):
         raise ValueError("All matrices must be Hermitian.")
 
-    A = H_batch.real  # shape: (batch_size, 3, 3)
+    A = H_batch.imag  # shape: (batch_size, 3, 3)
     zero = np.zeros_like(A)
 
     # Assemble block antisymmetric matrix:
@@ -66,14 +62,10 @@ def kahler_form_real(H_batch):
     lower = np.concatenate((-A.transpose(0, 2, 1), zero), axis=2)  # shape: (batch_size, 3, 6)
     omega = np.concatenate((upper, lower), axis=1)     # shape: (batch_size, 6, 6)
 
-    # Reorder (x1, y1, x2, y2, x3, y3) → (x1, x2, x3, y1, y2, y3)
-    perm = [0, 2, 4, 1, 3, 5]
-    omega_reordered = omega[:, perm][:, :, perm]
-
-    return omega_reordered
+    return omega
 
 
-def holomorphic_volume_form_to_real_tensor(c_batch):
+def holomorphic_volume_form_to_real(c_batch):
     """
     Convert a complex coefficient c of dz^1 ^ dz^2 ^ dz^3 into a real 6x6x6 tensor 
     representing the real coordinate expression of the holomorphic volume form.
@@ -132,22 +124,8 @@ def compute_gG2(G2_val):
     # Make B symmetric
     B = B + B.T - np.diag(B.diagonal())             
     detB = np.linalg.det(B)
-
-    
-    ### 
-    # Warning if excessive clipping
-    if detB < -1e-6:
-        raise ValueError("detB ({detB}) negative...")
-    # Clip det(B) if negative (due to floating pt error)
-    detB = max(detB, 0)
-    
-    #...below gives division by 0, basically shouldn't be getting singular B !?
-    #factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
-    #gG2 = factor * B
-    
-    gG2 = B ###delete when above fixed
-    ###
-    
+    factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
+    gG2 = factor * B  
     
     return gG2
 

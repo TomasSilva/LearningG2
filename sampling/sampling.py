@@ -7,7 +7,7 @@ import yaml
 import pickle as pickle
 
 # Import functions
-from geometry.geometry import kahler_form_real, holomorphic_volume_form_to_real_tensor, compute_gG2
+from geometry.geometry import hermitian_to_kahler_real, holomorphic_volume_form_to_real, compute_gG2
 from geometry.patches import CoordChange_C5R10
 from geometry.wedge_product import wedge_product
 
@@ -20,7 +20,8 @@ from cymetric.models.tfmodels import PhiFSModel
 # Function to generate the Link data (local pt coordinates and the G2 3-form)
 def LinkSample(n_pts, metric=False): 
     # Import the cymodel config info
-    with open(os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_model_config.yaml', 'r') as f:
+    cymodel_name = '' #..can change to use a different trained CY-metric model
+    with open(os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_model_config'+cymodel_name+'.yaml', 'r') as f:
         config = yaml.unsafe_load(f)
     
     #Set up point generator
@@ -43,7 +44,7 @@ def LinkSample(n_pts, metric=False):
     for i in range(config['nlayer']):
         nn_phi.add(tf.keras.layers.Dense(config['nHidden'], activation=config['act']))
     nn_phi.add(tf.keras.layers.Dense(config['n_out'], use_bias=False))
-    cymodel_filepath = os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_metric_model.keras'
+    cymodel_filepath = os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_metric_model'+cymodel_name+'.keras'
     cymetric_model = PhiFSModel(nn_phi, BASIS, alpha=config['alpha'])
     cymetric_model.nn_phi = tf.keras.models.load_model(cymodel_filepath)
     
@@ -54,21 +55,21 @@ def LinkSample(n_pts, metric=False):
     
     # Define the geometric components
     holomorphic_volume_form = pg.holomorphic_volume_form(cy_points)
-    hvf_r, hvf_i = holomorphic_volume_form_to_real_tensor(holomorphic_volume_form)
+    hvf_r, hvf_i = holomorphic_volume_form_to_real(holomorphic_volume_form)
     hermitian_metric = cymetric_model(CoordChange_C5R10(cy_points)).numpy()
-    kahler_form_R6 = kahler_form_real(hermitian_metric)
+    kahler_form_R6 = hermitian_to_kahler_real(hermitian_metric)
     kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
     
     ### for TOMAS
     #...currently functional code:
-    dthetas = np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)
+    dthetas = np.concatenate((np.zeros((cy_points.shape[0], 6)), np.ones((cy_points.shape[0], 1))), axis=1) 
     g2form_R7 = np.array([wedge_product(kahler_form_R7[idx], dthetas[idx]) for idx in range(cy_points.shape[0])])
     #...to replace with batch compatible code below:
     #g2form_R7 = wedge_product(kahler_form_R7, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)) 
     #...below is the old code (delete when happy)
     #g2form_R7 = wedge_form2_with_form1(kahler_form_R6, np.concatenate((np.zeros((cy_points.shape[0], 6)), thetas.reshape(-1, 1)), axis=1)) 
     ###
-    g2form_R7[:, :6, :6, :6] += hvf_i
+    g2form_R7[:, :6, :6, :6] += hvf_r
     
     # Return the G2 3-forms
     if not metric:
@@ -85,7 +86,7 @@ def LinkSample(n_pts, metric=False):
 if __name__ == '__main__':
     
     # Generate a link data sample
-    num_pts = int(1e2)
+    num_pts = int(1e1)
     link_pts, link_phis = LinkSample(num_pts, metric=False)
     
     print(f'Link pts shape:     {link_pts.shape}\nLink 3-forms shape: {link_phis.shape}')
