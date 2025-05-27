@@ -7,7 +7,8 @@ import yaml
 import pickle as pickle
 
 # Import functions
-from geometry.geometry import CoordChange_C5R10, kahler_form_real, holomorphic_volume_form_to_real_tensor, compute_gG2
+from geometry.geometry import kahler_form_real, holomorphic_volume_form_to_real_tensor, compute_gG2
+from geometry.patches import CoordChange_C5R10
 from geometry.wedge_product import wedge_product
 
 # Import cymetric functions

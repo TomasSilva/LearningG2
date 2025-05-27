@@ -9,8 +9,8 @@ import tensorflow as tf
 # Import functions
 from models.model import GlobalModel
 from sampling.sampling import LinkSample
-from geometry.geometry import form_to_vec, metric_to_vec
-from geometry.geometry import PatchChange_Coords, PatchChange_G2form, PatchChange_G2metric
+from geometry.compression import form_to_vec, metric_to_vec
+from geometry.patches import PatchChange_Coords, PatchChange_G2form, PatchChange_G2metric
 
 # Main body function for performing the metric training
 def main(hyperparameters_file):

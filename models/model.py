@@ -4,7 +4,7 @@ import tensorflow as tf
 from math import comb
 
 # Import functions
-from geometry.geometry import PatchChange_Coords, PatchChange_G2form
+from geometry.patches import PatchChange_Coords
 
 class PatchSubModel(tf.keras.Model):
     def __init__(self, hp, n_out, **kwargs):
