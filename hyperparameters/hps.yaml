@@ -5,9 +5,6 @@
 # Select whether to learn the G2-metric
 metric: false
 
-# Set the number of patches (current functionality for 1 or 2)
-n_patches: 1 ###need patch_change functions before make 5
-
 # Patching size
 # ...determines the distance from the radial midpoint to the outer edge of the 
 # overlap region within the patches

@@ -18,7 +18,7 @@ from cymetric.models.tfmodels import PhiFSModel
 
 ###########################################################################
 # Function to generate the Link data (local pt coordinates and the G2 3-form)
-def LinkSample(n_pts, metric=False): 
+def LinkSample(n_pts, metric=False, return_kahler_form=False): 
     # Import the cymodel config info
     cymodel_name = '' #..can change to use a different trained CY-metric model
     with open(os.path.dirname(os.path.dirname(__file__))+'/models/cy_models/cy_model_config'+cymodel_name+'.yaml', 'r') as f:
@@ -52,6 +52,7 @@ def LinkSample(n_pts, metric=False):
     thetas = np.random.uniform(low=0., high=2*np.pi, size=cy_points.shape[0]) #...sample a random angle
     c3_coords = cy_points[:, 2:] #..remove the 0th index as setting patch 0, then the 1st index with the CY eqn
     link_points_local = np.concatenate((np.real(c3_coords), np.imag(c3_coords), thetas.reshape(-1, 1)), axis=1) #...generate the link local coordinates
+    sample_outputs = [link_points_local]
     
     # Define the geometric components
     holomorphic_volume_form = pg.holomorphic_volume_form(cy_points)
@@ -73,12 +74,18 @@ def LinkSample(n_pts, metric=False):
     
     # Return the G2 3-forms
     if not metric:
-        return (link_points_local, g2form_R7)
+        sample_outputs.append(g2form_R7)
 
     # Compute and return the G2 metrics
     else:
         g2metric_R7 = np.array([compute_gG2(g2form) for g2form in g2form_R7])
-        return (link_points_local, g2metric_R7)
+        sample_outputs.append(g2metric_R7)
+        
+    # Return the volume form if requested
+    if return_kahler_form:
+        sample_outputs.append(kahler_form_R7)
+        
+    return sample_outputs
 
     
 
