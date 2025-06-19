@@ -128,7 +128,7 @@ if __name__ == "__main__":
     
     # Save the model
     if save == True:
-        # eIf the runs folder for saving models doesn't exist, create it
+        # If the runs folder for saving models doesn't exist, create it
         logging_path = os.path.dirname(__file__)+'/runs/'
         if not os.path.exists(logging_path):
             os.makedirs(logging_path)
