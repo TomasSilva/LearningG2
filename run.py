@@ -117,7 +117,7 @@ def main(hyperparameters_file):
 if __name__ == "__main__":
     # Supervised run hyperparameters
     save = True   #...whether to save the trained supervised model
-    save_flag = 'test_metric' #...the name of the trained supervised model
+    save_flag = 'test' #...the name of the trained supervised model
     if len(sys.argv) > 1:
         save_flag = sys.argv[1]
 
@@ -128,5 +128,11 @@ if __name__ == "__main__":
     
     # Save the model
     if save == True:
-        network.save(os.path.dirname(__file__)+f'/runs/link_model_{save_flag}.keras')
+        # eIf the runs folder for saving models doesn't exist, create it
+        logging_path = os.path.dirname(__file__)+'/runs/'
+        if not os.path.exists(logging_path):
+            os.makedirs(logging_path)
+            
+        # Save the model
+        network.save(logging_path+'link_model_{save_flag}.keras')
     
