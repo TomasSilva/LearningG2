@@ -24,7 +24,7 @@ def main(hyperparameters_file):
     ### Data set-up ###
     # Create training sample
     train_dataset = LinkSample(n_pts=hp["num_samples"])
-    train_sample = train_dataset.link_points
+    train_sample = train_dataset.link_points()
     train_patch_idxs = patch_indices_to_scalar(train_dataset.one_idxs, train_dataset.dropped_idxs)
     if not hp["metric"]:
         train_output = train_dataset.g2_form
@@ -44,7 +44,7 @@ def main(hyperparameters_file):
     # Create validation sample
     if hp["validate"]:
         val_dataset = LinkSample(n_pts=hp["num_val_samples"])
-        val_sample = val_dataset.link_points
+        val_sample = val_dataset.link_points()
         val_patch_idxs = patch_indices_to_scalar(val_dataset.one_idxs, val_dataset.dropped_idxs)
         if not hp["metric"]:
             val_output = val_dataset.g2_form
@@ -134,5 +134,5 @@ if __name__ == "__main__":
             os.makedirs(logging_path)
             
         # Save the model
-        network.save(logging_path+'link_model_{save_flag}.keras')
+        network.save(logging_path+f'link_model_{save_flag}.keras')
     

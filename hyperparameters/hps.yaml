@@ -3,12 +3,12 @@
 ###############################################################################
 # Geometric set-up
 # Select whether to learn the G2-metric
-metric: true
+metric: false
 
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 200000
+num_samples: 2000000
 
 ###############################################################################
 # Model set-up
@@ -41,8 +41,8 @@ epochs: 200
 batch_size: 100
 
 # Learning rate for the optimizer
-init_learning_rate: 0.005
-min_learning_rate: 0.005
+init_learning_rate: 0.0005
+min_learning_rate: 0.00005
 
 # Validation hyperparameters
 validate: false

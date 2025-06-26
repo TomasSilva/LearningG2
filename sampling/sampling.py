@@ -83,7 +83,6 @@ class LinkSample:
         self.g2form_R7 = np.array([wedge_product(self.kahler_form_R7[i], self.dthetas[i]) for i in range(self.cy_points_C5.shape[0])])
         self.g2form_R7[:, :6, :6, :6] += hvf_r
 
-    @property
     def link_points(self, local=True):
         if local:
             return self.link_points_local
@@ -93,7 +92,11 @@ class LinkSample:
                 self.link_points_C5 = self.cy_points_on_S9 * np.exp(1j * self.thetas.reshape(-1, 1)) #...multiple that angle in, the plane origin is the normalised cy point and orientation is implicitly set
                 self.link_points_R10 = CoordChange_C5R10(self.link_points_C5)
             return self.link_points_R10
-
+        
+    @property
+    def kahler_form(self):
+        return self.kahler_form_R7
+        
     @property
     def g2_form(self):
         return self.g2form_R7
@@ -104,11 +107,6 @@ class LinkSample:
             self._g2_metric = np.array([compute_gG2(g2) for g2 in self.g2form_R7])
         return self._g2_metric
 
-    @property
-    def kahler_form(self):
-        return self.kahler_form_R7
-
-
     
 
 ###########################################################################
@@ -117,7 +115,7 @@ if __name__ == '__main__':
     # Generate a link data sample
     n_pts = int(1e1)
     link_dataset = LinkSample(n_pts=n_pts)
-    link_coords = link_dataset.link_points
+    link_coords = link_dataset.link_points()
     g2_form = link_dataset.g2_form
     #g2_metric = link_dataset.g2_metric
     #kahler_form = link_dataset.kahler_form
