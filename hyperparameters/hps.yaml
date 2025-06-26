@@ -8,7 +8,7 @@ metric: false
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 2000000
+num_samples: 200000
 
 ###############################################################################
 # Model set-up
@@ -28,6 +28,9 @@ activations: gelu
 
 # Whether to use bias terms in the neural network layers
 use_bias: true
+
+# Scale for the model parameter uniform initialisation
+parameter_initialisation_scale: 0.01
 
 # Dimension of the patch-index embedding layer
 embedding_dim: 8

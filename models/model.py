@@ -3,6 +3,14 @@
 import tensorflow as tf
 from math import comb
 
+class ScaledGlorotUniform(tf.keras.initializers.GlorotUniform):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.scale = scale
+
+    def __call__(self, shape, dtype=None):
+        return self.scale * super().__call__(shape, dtype=dtype)
+
 class GlobalModel(tf.keras.Model):
     def __init__(self, hp, **kwargs):
         super(GlobalModel, self).__init__(**kwargs)
@@ -34,16 +42,18 @@ class GlobalModel(tf.keras.Model):
         combined_input = tf.keras.layers.Concatenate()([coord_input, patch_embed])
 
         # Feedforward layers
+        initializer = ScaledGlorotUniform(scale=self.hp["parameter_initialisation_scale"])
         x = tf.keras.layers.Dense(
-            self.hp["n_hidden"], activation=self.hp["activations"], use_bias=self.hp["use_bias"]
+            self.hp["n_hidden"], activation=self.hp["activations"], use_bias=self.hp["use_bias"], kernel_initializer=initializer
         )(combined_input)
         for _ in range(self.hp["n_layers"] - 2):
             x = tf.keras.layers.Dense(
                 self.hp["n_hidden"],
                 activation=self.hp["activations"],
-                use_bias=self.hp["use_bias"]
+                use_bias=self.hp["use_bias"],
+                kernel_initializer=initializer
             )(x)
-        outputs = tf.keras.layers.Dense(self.n_out, activation=None, use_bias=False)(x)
+        outputs = tf.keras.layers.Dense(self.n_out, activation=None, use_bias=False, kernel_initializer=initializer)(x)
            
         self.model = tf.keras.Model(inputs=[coord_input, patch_input], outputs=outputs)
 
