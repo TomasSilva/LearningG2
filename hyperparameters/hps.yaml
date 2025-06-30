@@ -18,10 +18,10 @@ saved_model_path: ...
 # ...the below are ignored if `saved_model` is true and a model is imported
 
 # Number of hidden units in each layer
-n_hidden: 64
+n_hidden: 128
 
 # Number of layers in the neural network
-n_layers: 3
+n_layers: 4
 
 # Activation function to use in the neural network (e.g., gelu, relu)
 activations: gelu
@@ -41,11 +41,11 @@ embedding_dim: 8
 epochs: 200
 
 # Batch size for training
-batch_size: 100
+batch_size: 32
 
 # Learning rate for the optimizer
-init_learning_rate: 0.0005
-min_learning_rate: 0.00005
+init_learning_rate: 0.001
+min_learning_rate: 0.0001
 
 # Validation hyperparameters
 validate: false
