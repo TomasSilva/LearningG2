@@ -30,7 +30,7 @@ activations: gelu
 use_bias: true
 
 # Scale for the model parameter uniform initialisation
-parameter_initialisation_scale: 0.01
+parameter_initialisation_scale: 1.0
 
 # Dimension of the patch-index embedding layer
 embedding_dim: 8
@@ -48,7 +48,7 @@ init_learning_rate: 0.001
 min_learning_rate: 0.0001
 
 # Validation hyperparameters
-validate: false
+validate: true
 val_print: false
 num_val_samples: 500
 val_batch_size: 100
