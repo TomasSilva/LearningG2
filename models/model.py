@@ -71,10 +71,11 @@ class GlobalModel(tf.keras.Model):
             x: tf.Tensor, shape (N, 7) input coordinates
             y: tf.Tensor, shape (N, n_out) output vielbein/metric vectors
         """
-        self.input_mean = tf.reduce_mean(x, axis=0)
-        self.input_std = tf.math.reduce_std(x, axis=0) + 1e-8
-        self.output_mean = tf.reduce_mean(y, axis=0)
-        self.output_std = tf.math.reduce_std(y, axis=0) + 1e-8
+        dtype = x.dtype
+        self.input_mean = tf.cast(tf.reduce_mean(x, axis=0), dtype)
+        self.input_std = tf.cast(tf.math.reduce_std(x, axis=0) + 1e-8, dtype)
+        self.output_mean = tf.cast(tf.reduce_mean(y, axis=0), dtype)
+        self.output_std = tf.cast(tf.math.reduce_std(y, axis=0) + 1e-8, dtype)
 
     def call(self, inputs):
         # Unpack inputs
