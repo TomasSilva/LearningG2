@@ -11,6 +11,7 @@ from models.model import GlobalModel
 from sampling.sampling import LinkSample
 from geometry.compression import form_to_vec, metric_to_vec
 from geometry.patches import patch_indices_to_scalar
+from geometry.normalisation import Normaliser
 
 # Main body function for performing the metric training
 def main(hyperparameters_file):
@@ -24,44 +25,15 @@ def main(hyperparameters_file):
     ### Data set-up ###
     # Create training sample
     train_dataset = LinkSample(n_pts=hp["num_samples"])
-    train_sample = train_dataset.link_points()
+    train_sample = tf.convert_to_tensor(train_dataset.link_points())
     train_patch_idxs = patch_indices_to_scalar(train_dataset.one_idxs, train_dataset.dropped_idxs)
     if not hp["metric"]:
         train_output = train_dataset.g2_form
+        train_output_vecs = form_to_vec(tf.convert_to_tensor(train_output))
     else:
         train_output = train_dataset.g2_metric
-    train_sample_tf = tf.convert_to_tensor(train_sample)
-    train_output_tf = tf.convert_to_tensor(train_output)
-    
-    # Convert to dof vectors (vielbeins)
-    if not hp["metric"]:
-        train_output_vecs = form_to_vec(train_output_tf)
-        train_output_vecs_tf = tf.convert_to_tensor(train_output_vecs)
-    else:
-        train_output_vecs = metric_to_vec(train_output_tf)
-        train_output_vecs_tf = tf.convert_to_tensor(train_output_vecs)
-    
-    # Create validation sample
-    if hp["validate"]:
-        val_dataset = LinkSample(n_pts=hp["num_val_samples"])
-        val_sample = val_dataset.link_points()
-        val_patch_idxs = patch_indices_to_scalar(val_dataset.one_idxs, val_dataset.dropped_idxs)
-        if not hp["metric"]:
-            val_output = val_dataset.g2_form
-            val_output_tf = tf.convert_to_tensor(val_output)
-            val_output_vecs = form_to_vec(val_output_tf)
-        else:
-            val_output = val_dataset.g2_metric
-            val_output_tf = tf.convert_to_tensor(val_output)
-            val_output_vecs = metric_to_vec(val_output_tf)
-        val_sample_tf = tf.convert_to_tensor(val_sample)
-        val_output_vecs_tf = tf.convert_to_tensor(val_output_vecs)
-        val_data = ([val_sample_tf, val_patch_idxs], val_output_vecs_tf)
-    else:
-        val_sample_tf = None
-        val_output_vecs_tf = None
-        val_data = None
-        
+        train_output_vecs = metric_to_vec(tf.convert_to_tensor(train_output))
+
     ###########################################################################
     ### Run ML ###
     # Set up optimiser
@@ -92,11 +64,29 @@ def main(hyperparameters_file):
     else:
         model = GlobalModel(hp)
         model.compile(optimizer=optimiser, loss="MSE")
-    
+
+    # Fit normalisers on training data (raw, unnormalised)
+    model.fit_normalisers(train_sample, train_output_vecs)
+
+    # Create validation sample
+    if hp["validate"]:
+        val_dataset = LinkSample(n_pts=hp["num_val_samples"])
+        val_sample = tf.convert_to_tensor(val_dataset.link_points())
+        val_patch_idxs = patch_indices_to_scalar(val_dataset.one_idxs, val_dataset.dropped_idxs)
+        if not hp["metric"]:
+            val_output = val_dataset.g2_form
+            val_output_vecs = form_to_vec(tf.convert_to_tensor(val_output))
+        else:
+            val_output = val_dataset.g2_metric
+            val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
+        val_data = ([val_sample, val_patch_idxs], val_output_vecs)
+    else:
+        val_data = None
+
     # Train!
     loss_hist = model.fit(
-        [train_sample_tf, train_patch_idxs],
-        train_output_vecs_tf,
+        [train_sample, train_patch_idxs],
+        train_output_vecs,
         batch_size=hp["batch_size"],
         epochs=hp["epochs"],
         verbose=hp["verbosity"],
@@ -107,8 +97,8 @@ def main(hyperparameters_file):
     return (
         model,
         loss_hist,
-        train_sample_tf,
-        train_output_vecs_tf,
+        train_sample,
+        train_output_vecs,
         val_data,
     )
 
