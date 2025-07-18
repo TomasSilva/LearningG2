@@ -82,12 +82,16 @@ class GlobalModel(tf.keras.Model):
         coords, patch_idxs = inputs
         # Normalise coordinates
         if (self.input_mean is not None) and (self.input_std is not None):
-            coords = (coords - self.input_mean) / self.input_std
+            input_mean = tf.cast(self.input_mean, coords.dtype)
+            input_std = tf.cast(self.input_std, coords.dtype)
+            coords = (coords - input_mean) / input_std
         # Forward pass
         y_pred_norm = self.model([coords, patch_idxs])
         # Denormalise outputs
         if (self.output_mean is not None) and (self.output_std is not None):
-            y_pred = y_pred_norm * self.output_std + self.output_mean
+            output_mean = tf.cast(self.output_mean, y_pred_norm.dtype)
+            output_std = tf.cast(self.output_std, y_pred_norm.dtype)
+            y_pred = y_pred_norm * output_std + output_mean
         else:
             y_pred = y_pred_norm
         return y_pred
