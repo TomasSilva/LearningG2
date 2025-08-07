@@ -7,7 +7,10 @@ import numpy as np
 import tensorflow as tf
 
 # Import functions
-from models.normalised_model import GlobalNormalisedModel, NormalisedTrainingModel
+from models.model import (
+    GlobalModel, TrainingModel, NormalisationLayer, 
+    DenormalisationLayer, NormalisedModel, ScaledGlorotUniform
+)
 from sampling.sampling import LinkSample
 from geometry.compression import form_to_vec, metric_to_vec
 from geometry.patches import patch_indices_to_scalar
@@ -50,18 +53,39 @@ def main(hyperparameters_file):
     
     # Create the global model (handles original scale I/O)
     if hp["saved_model"]:
-        # Loading saved models would need special handling - you could either:
-        # 1. Keep the old GlobalModel for loading, then transfer weights
-        # 2. Implement custom loading logic for the new architecture
-        raise NotImplementedError("Loading saved normalised models not yet implemented")
+        # Load the saved global model (includes normalisation layers)
+        model_path = os.path.join(os.path.dirname(__file__), 'runs', hp["saved_model"])
+        print(f"Loading model from: {model_path}")
+        
+        # Custom objects for loading
+        custom_objects = {
+            'GlobalModel': GlobalModel,
+            'NormalisationLayer': NormalisationLayer,
+            'DenormalisationLayer': DenormalisationLayer,
+            'NormalisedModel': NormalisedModel,
+            'ScaledGlorotUniform': ScaledGlorotUniform
+        }
+        
+        try:
+            global_model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
+            print("Successfully loaded saved model with normalisation layers")
+            # Skip fitting normalisers as they're already fitted in the loaded model
+            normalisers_already_fitted = True
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            print("Creating new model instead...")
+            global_model = GlobalModel(hp)
+            normalisers_already_fitted = False
     else:
-        global_model = GlobalNormalisedModel(hp)
+        global_model = GlobalModel(hp)
+        normalisers_already_fitted = False
 
-    # Fit normalisers on training data (raw, unnormalised)
-    global_model.fit_normalisers(train_sample, train_output_vecs)
+    # Fit normalisers on training data (raw, unnormalised) - only if not loaded
+    if not normalisers_already_fitted:
+        global_model.fit_normalisers(train_sample, train_output_vecs)
     
     # Create training model that operates at normalised scale
-    training_model = NormalisedTrainingModel(global_model)
+    training_model = TrainingModel(global_model)
     training_model.compile(optimizer=optimiser, loss="MSE")
 
     # Create validation sample
@@ -111,7 +135,7 @@ if __name__ == "__main__":
 
     # Define and train the model
     hyperparams_filepath = os.path.dirname(__file__)+'/hyperparameters/hps.yaml'
-    network, lh, train_coords, train_metrics, val_data = main(hyperparams_filepath)
+    global_model, lh, train_coords, train_metrics, val_data = main(hyperparams_filepath)
     print('trained.....')
     
     # Save the model
@@ -125,8 +149,9 @@ if __name__ == "__main__":
         # Use the same input shapes as training
         dummy_coords = tf.zeros((1, 7), dtype=train_coords.dtype)
         dummy_patch_idx = tf.zeros((1,), dtype=tf.int32)
-        network([dummy_coords, dummy_patch_idx])  # This builds the model
+        global_model([dummy_coords, dummy_patch_idx])  # This builds the model
             
-        # Save the model
-        network.save(logging_path+f'link_model_{save_flag}.keras')
+        # Save the full external model (includes normalisation layers)
+        global_model.save(logging_path+f'global_model_{save_flag}.keras')
+        print(f'Model saved to: {logging_path}global_model_{save_flag}.keras')
     
