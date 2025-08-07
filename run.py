@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 # Import functions
-from models.model import GlobalModel
+from models.normalised_model import GlobalNormalisedModel, NormalisedTrainingModel
 from sampling.sampling import LinkSample
 from geometry.compression import form_to_vec, metric_to_vec
 from geometry.patches import patch_indices_to_scalar
@@ -48,25 +48,21 @@ def main(hyperparameters_file):
             )
         optimiser = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     
-    # Import the model
+    # Create the global model (handles original scale I/O)
     if hp["saved_model"]:
-        model = tf.keras.models.load_model(hp["saved_model_path"])
-        model.compile(optimizer=optimiser, loss="MSE")
-        # Update imported model implicit hps
-        hp["metric"]      = model.hp["metric"]
-        hp["n_hidden"]    = model.hp["n_hidden"] 
-        hp["n_layers"]    = model.hp["n_layers"]
-        hp["activations"] = model.hp["activations"]
-        hp["use_bias"]    = model.hp["use_bias"] #...these are overwritten by the import
-        model.hp = hp  
-        model.set_serializable_hp()        
-    # Build the model
+        # Loading saved models would need special handling - you could either:
+        # 1. Keep the old GlobalModel for loading, then transfer weights
+        # 2. Implement custom loading logic for the new architecture
+        raise NotImplementedError("Loading saved normalised models not yet implemented")
     else:
-        model = GlobalModel(hp)
-        model.compile(optimizer=optimiser, loss="MSE")
+        global_model = GlobalNormalisedModel(hp)
 
     # Fit normalisers on training data (raw, unnormalised)
-    model.fit_normalisers(train_sample, train_output_vecs)
+    global_model.fit_normalisers(train_sample, train_output_vecs)
+    
+    # Create training model that operates at normalised scale
+    training_model = NormalisedTrainingModel(global_model)
+    training_model.compile(optimizer=optimiser, loss="MSE")
 
     # Create validation sample
     if hp["validate"]:
@@ -79,27 +75,29 @@ def main(hyperparameters_file):
         else:
             val_output = val_dataset.g2_metric
             val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
-        val_data = ([val_sample, val_patch_idxs], val_output_vecs)
+        # Normalise validation targets for training
+        val_output_vecs_normalised = global_model.normalise_targets(val_output_vecs)
+        val_data_normalised = ([val_sample, val_patch_idxs], val_output_vecs_normalised)
     else:
-        val_data = None
+        val_data_normalised = None
 
-    # Train!
-    loss_hist = model.fit(
+    # Train at normalised scale!
+    loss_hist = training_model.fit_with_normalised_targets(
         [train_sample, train_patch_idxs],
-        train_output_vecs,
+        train_output_vecs,  
         batch_size=hp["batch_size"],
         epochs=hp["epochs"],
         verbose=hp["verbosity"],
-        validation_data=val_data,
+        validation_data=val_data_normalised,
         shuffle=True,
     )
 
     return (
-        model,
+        global_model,  
         loss_hist,
         train_sample,
         train_output_vecs,
-        val_data,
+        val_data_normalised,
     )
 
 
