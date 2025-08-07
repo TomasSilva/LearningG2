@@ -193,6 +193,9 @@ class GlobalNormalisedModel(tf.keras.Model):
         
         # Flag to track if normalisation has been fitted
         self._normalisation_fitted = False
+        
+        # Build the model structure explicitly
+        self.build(input_shape=[(None, 7), (None,)])
 
     def fit_normalisers(self, x, y):
         """

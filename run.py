@@ -121,6 +121,12 @@ if __name__ == "__main__":
         if not os.path.exists(logging_path):
             os.makedirs(logging_path)
             
+        # Build the model explicitly to avoid saving warnings
+        # Use the same input shapes as training
+        dummy_coords = tf.zeros((1, 7), dtype=train_coords.dtype)
+        dummy_patch_idx = tf.zeros((1,), dtype=tf.int32)
+        network([dummy_coords, dummy_patch_idx])  # This builds the model
+            
         # Save the model
         network.save(logging_path+f'link_model_{save_flag}.keras')
     
