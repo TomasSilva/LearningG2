@@ -23,13 +23,15 @@ class NormalisationLayer(tf.keras.layers.Layer):
         
     def fit_statistics(self, data):
         """Fit normalisation statistics on data"""
+        # Use the same dtype as the input data
+        dtype = data.dtype
         self.mean = tf.Variable(
-            tf.reduce_mean(data, axis=0), 
+            tf.cast(tf.reduce_mean(data, axis=0), dtype), 
             trainable=False, 
             name=f"{self.name}_mean"
         )
         self.std = tf.Variable(
-            tf.math.reduce_std(data, axis=0) + 1e-8, 
+            tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype), 
             trainable=False, 
             name=f"{self.name}_std"
         )
@@ -37,7 +39,10 @@ class NormalisationLayer(tf.keras.layers.Layer):
     def call(self, inputs):
         if self.mean is None or self.std is None:
             raise ValueError(f"Normalisation layer {self.name} not fitted. Call fit_statistics() first.")
-        return (inputs - self.mean) / self.std
+        # Cast mean and std to match input dtype
+        mean = tf.cast(self.mean, inputs.dtype)
+        std = tf.cast(self.std, inputs.dtype)
+        return (inputs - mean) / std
         
     def get_config(self):
         config = super().get_config()
@@ -54,8 +59,9 @@ class NormalisationLayer(tf.keras.layers.Layer):
         std = config.pop("std", None)
         layer = cls(**config)
         if mean is not None and std is not None:
-            layer.mean = tf.Variable(mean, trainable=False)
-            layer.std = tf.Variable(std, trainable=False)
+            # Cast to float32 when loading from config (reasonable default for saved models)
+            layer.mean = tf.Variable(tf.cast(mean, tf.float32), trainable=False)
+            layer.std = tf.Variable(tf.cast(std, tf.float32), trainable=False)
         return layer
 
 
@@ -69,13 +75,15 @@ class DenormalisationLayer(tf.keras.layers.Layer):
         
     def fit_statistics(self, data):
         """Fit denormalisation statistics on data"""
+        # Use the same dtype as the input data
+        dtype = data.dtype
         self.mean = tf.Variable(
-            tf.reduce_mean(data, axis=0), 
+            tf.cast(tf.reduce_mean(data, axis=0), dtype), 
             trainable=False, 
             name=f"{self.name}_mean"
         )
         self.std = tf.Variable(
-            tf.math.reduce_std(data, axis=0) + 1e-8, 
+            tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype), 
             trainable=False, 
             name=f"{self.name}_std"
         )
@@ -83,7 +91,10 @@ class DenormalisationLayer(tf.keras.layers.Layer):
     def call(self, inputs):
         if self.mean is None or self.std is None:
             raise ValueError(f"Denormalisation layer {self.name} not fitted. Call fit_statistics() first.")
-        return inputs * self.std + self.mean
+        # Cast mean and std to match input dtype
+        mean = tf.cast(self.mean, inputs.dtype)
+        std = tf.cast(self.std, inputs.dtype)
+        return inputs * std + mean
         
     def get_config(self):
         config = super().get_config()
@@ -100,8 +111,9 @@ class DenormalisationLayer(tf.keras.layers.Layer):
         std = config.pop("std", None)
         layer = cls(**config)
         if mean is not None and std is not None:
-            layer.mean = tf.Variable(mean, trainable=False)
-            layer.std = tf.Variable(std, trainable=False)
+            # Cast to float32 when loading from config (reasonable default for saved models)
+            layer.mean = tf.Variable(tf.cast(mean, tf.float32), trainable=False)
+            layer.std = tf.Variable(tf.cast(std, tf.float32), trainable=False)
         return layer
 
 
@@ -230,7 +242,10 @@ class GlobalNormalisedModel(tf.keras.Model):
         """Normalise target outputs for training at normalised scale"""
         if not self._normalisation_fitted:
             raise ValueError("Normalisation not fitted. Call fit_normalisers() first.")
-        return (targets - self.output_denormaliser.mean) / self.output_denormaliser.std
+        # Cast mean and std to match targets dtype
+        mean = tf.cast(self.output_denormaliser.mean, targets.dtype)
+        std = tf.cast(self.output_denormaliser.std, targets.dtype)
+        return (targets - mean) / std
 
     def _is_serializable(self, value):
         try:
