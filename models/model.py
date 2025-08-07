@@ -193,9 +193,6 @@ class GlobalModel(tf.keras.Model):
         
         # Flag to track if normalisation has been fitted
         self._normalisation_fitted = False
-        
-        # Build the model structure explicitly
-        self.build(input_shape=[(None, 7), (None,)])
 
     def fit_normalisers(self, x, y):
         """
@@ -207,6 +204,9 @@ class GlobalModel(tf.keras.Model):
         self.input_normaliser.fit_statistics(x)
         self.output_denormaliser.fit_statistics(y)
         self._normalisation_fitted = True
+        
+        # Build the model now that normalisation is fitted
+        self.build(input_shape=[(None, 7), (None,)])
 
     def call(self, inputs):
         """Forward pass through the full model (original scale -> normalised -> original scale)"""
@@ -289,6 +289,10 @@ class GlobalModel(tf.keras.Model):
         # Create the model
         model = cls(hp, **config)
         model._normalisation_fitted = normalisation_fitted
+        
+        # If normalisation was fitted, build the model
+        if normalisation_fitted:
+            model.build(input_shape=[(None, 7), (None,)])
         
         return model
 
