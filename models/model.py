@@ -23,17 +23,30 @@ class NormalisationLayer(tf.keras.layers.Layer):
         
     def fit_statistics(self, data):
         """Fit normalisation statistics on data"""
+        # Validation
+        if data is None or tf.size(data) == 0:
+            raise ValueError("Cannot fit statistics on empty data")
+        if tf.reduce_any(tf.math.is_nan(data)):
+            raise ValueError("Data contains NaN values")
+            
         # Use the same dtype as the input data
         dtype = data.dtype
+        
+        # Ensure we have a valid name for variables
+        base_name = self.name if self.name else "normalisation"
+        
+        mean_value = tf.cast(tf.reduce_mean(data, axis=0), dtype)
+        std_value = tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype)
+        
         self.mean = tf.Variable(
-            tf.cast(tf.reduce_mean(data, axis=0), dtype), 
+            mean_value, 
             trainable=False, 
-            name=f"{self.name}_mean"
+            name=f"{base_name}_mean"
         )
         self.std = tf.Variable(
-            tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype), 
+            std_value, 
             trainable=False, 
-            name=f"{self.name}_std"
+            name=f"{base_name}_std"
         )
         
     def call(self, inputs):
@@ -49,7 +62,8 @@ class NormalisationLayer(tf.keras.layers.Layer):
         if self.mean is not None and self.std is not None:
             config.update({
                 "mean": self.mean.numpy().tolist(),
-                "std": self.std.numpy().tolist()
+                "std": self.std.numpy().tolist(),
+                "dtype": str(self.mean.dtype.name)  # Preserve original dtype
             })
         return config
         
@@ -57,11 +71,27 @@ class NormalisationLayer(tf.keras.layers.Layer):
     def from_config(cls, config):
         mean = config.pop("mean", None)
         std = config.pop("std", None)
+        dtype_name = config.pop("dtype", "float32")  # Default to float32 if not specified
+        
         layer = cls(**config)
         if mean is not None and std is not None:
-            # Cast to float32 when loading from config (reasonable default for saved models)
-            layer.mean = tf.Variable(tf.cast(mean, tf.float32), trainable=False)
-            layer.std = tf.Variable(tf.cast(std, tf.float32), trainable=False)
+            # Use original dtype or specified dtype
+            try:
+                dtype = getattr(tf, dtype_name)
+            except AttributeError:
+                dtype = tf.float32  # Fallback
+                
+            base_name = layer.name if layer.name else "normalisation"
+            layer.mean = tf.Variable(
+                tf.cast(mean, dtype), 
+                trainable=False,
+                name=f"{base_name}_mean"
+            )
+            layer.std = tf.Variable(
+                tf.cast(std, dtype), 
+                trainable=False,
+                name=f"{base_name}_std"
+            )
         return layer
 
 
@@ -75,17 +105,30 @@ class DenormalisationLayer(tf.keras.layers.Layer):
         
     def fit_statistics(self, data):
         """Fit denormalisation statistics on data"""
+        # Validation
+        if data is None or tf.size(data) == 0:
+            raise ValueError("Cannot fit statistics on empty data")
+        if tf.reduce_any(tf.math.is_nan(data)):
+            raise ValueError("Data contains NaN values")
+            
         # Use the same dtype as the input data
         dtype = data.dtype
+        
+        # Ensure we have a valid name for variables
+        base_name = self.name if self.name else "denormalisation"
+        
+        mean_value = tf.cast(tf.reduce_mean(data, axis=0), dtype)
+        std_value = tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype)
+        
         self.mean = tf.Variable(
-            tf.cast(tf.reduce_mean(data, axis=0), dtype), 
+            mean_value, 
             trainable=False, 
-            name=f"{self.name}_mean"
+            name=f"{base_name}_mean"
         )
         self.std = tf.Variable(
-            tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype), 
+            std_value, 
             trainable=False, 
-            name=f"{self.name}_std"
+            name=f"{base_name}_std"
         )
         
     def call(self, inputs):
@@ -101,7 +144,8 @@ class DenormalisationLayer(tf.keras.layers.Layer):
         if self.mean is not None and self.std is not None:
             config.update({
                 "mean": self.mean.numpy().tolist(),
-                "std": self.std.numpy().tolist()
+                "std": self.std.numpy().tolist(),
+                "dtype": str(self.mean.dtype.name)  # Preserve original dtype
             })
         return config
         
@@ -109,11 +153,27 @@ class DenormalisationLayer(tf.keras.layers.Layer):
     def from_config(cls, config):
         mean = config.pop("mean", None)
         std = config.pop("std", None)
+        dtype_name = config.pop("dtype", "float32")  # Default to float32 if not specified
+        
         layer = cls(**config)
         if mean is not None and std is not None:
-            # Cast to float32 when loading from config (reasonable default for saved models)
-            layer.mean = tf.Variable(tf.cast(mean, tf.float32), trainable=False)
-            layer.std = tf.Variable(tf.cast(std, tf.float32), trainable=False)
+            # Use original dtype or specified dtype
+            try:
+                dtype = getattr(tf, dtype_name)
+            except AttributeError:
+                dtype = tf.float32  # Fallback
+                
+            base_name = layer.name if layer.name else "denormalisation"
+            layer.mean = tf.Variable(
+                tf.cast(mean, dtype), 
+                trainable=False,
+                name=f"{base_name}_mean"
+            )
+            layer.std = tf.Variable(
+                tf.cast(std, dtype), 
+                trainable=False,
+                name=f"{base_name}_std"
+            )
         return layer
 
 
@@ -173,6 +233,48 @@ class NormalisedModel(tf.keras.Model):
 
     def call(self, inputs):
         return self.model(inputs)
+    
+    def get_config(self):
+        """Get configuration for saving"""
+        config = super().get_config()
+        # Create serializable hp dict
+        serializable_hp = {}
+        for key, value in self.hp.items():
+            try:
+                tf.keras.utils.serialize_keras_object(value)
+                serializable_hp[key] = value
+            except (TypeError, ValueError):
+                # Skip non-serializable values
+                pass
+        
+        config.update({
+            'hp': serializable_hp,
+            'metric': self.metric,
+            'n_out': self.n_out,
+            'embedding_dim': self.embedding_dim
+        })
+        return config
+    
+    @classmethod 
+    def from_config(cls, config, custom_objects=None):
+        """Create model from configuration"""
+        hp_data = config.pop('hp')
+        
+        # Create mock hp object with required methods
+        class MockHP:
+            def __init__(self, data):
+                self._data = dict(data)
+                for k, v in self._data.items():
+                    setattr(self, k, v)
+            
+            def items(self):
+                return self._data.items()
+            
+            def __getitem__(self, key):
+                return self._data[key]
+        
+        hp = MockHP(hp_data)
+        return cls(hp, **config)
 
 
 class GlobalModel(tf.keras.Model):
@@ -201,6 +303,18 @@ class GlobalModel(tf.keras.Model):
             x: tf.Tensor, shape (N, 7) input coordinates
             y: tf.Tensor, shape (N, n_out) output vielbein/metric vectors
         """
+        # Validation
+        if x is None or y is None:
+            raise ValueError("Input data (x, y) cannot be None")
+        if len(x.shape) != 2 or x.shape[1] != 7:
+            raise ValueError(f"Expected x shape (N, 7), got {x.shape}")
+        if len(y.shape) != 2:
+            raise ValueError(f"Expected y shape (N, n_out), got {y.shape}")
+        if x.shape[0] != y.shape[0]:
+            raise ValueError(f"Batch size mismatch: x={x.shape[0]}, y={y.shape[0]}")
+        if x.shape[0] == 0:
+            raise ValueError("Cannot fit normalizers on empty data")
+            
         self.input_normaliser.fit_statistics(x)
         self.output_denormaliser.fit_statistics(y)
         self._normalisation_fitted = True
@@ -208,9 +322,18 @@ class GlobalModel(tf.keras.Model):
         # Build the model now that normalisation is fitted
         self.build(input_shape=[(None, 7), (None,)])
 
+    @property
+    def is_normalisation_fitted(self):
+        """Check if normalization layers are properly fitted"""
+        return (self._normalisation_fitted and 
+                self.input_normaliser.mean is not None and 
+                self.input_normaliser.std is not None and
+                self.output_denormaliser.mean is not None and 
+                self.output_denormaliser.std is not None)
+
     def call(self, inputs):
         """Forward pass through the full model (original scale -> normalised -> original scale)"""
-        if not self._normalisation_fitted:
+        if not self.is_normalisation_fitted:
             raise ValueError("Normalisation not fitted. Call fit_normalisers() first.")
             
         coords, patch_idxs = inputs
@@ -228,7 +351,7 @@ class GlobalModel(tf.keras.Model):
 
     def call_normalised(self, inputs):
         """Forward pass that returns normalised outputs (for training at normalised scale)"""
-        if not self._normalisation_fitted:
+        if not self.is_normalisation_fitted:
             raise ValueError("Normalisation not fitted. Call fit_normalisers() first.")
             
         coords, patch_idxs = inputs
@@ -243,7 +366,7 @@ class GlobalModel(tf.keras.Model):
 
     def normalise_targets(self, targets):
         """Normalise target outputs for training at normalised scale"""
-        if not self._normalisation_fitted:
+        if not self.is_normalisation_fitted:
             raise ValueError("Normalisation not fitted. Call fit_normalisers() first.")
         # Cast mean and std to match targets dtype
         mean = tf.cast(self.output_denormaliser.mean, targets.dtype)
@@ -274,17 +397,33 @@ class GlobalModel(tf.keras.Model):
     @classmethod
     def from_config(cls, config, custom_objects=None):
         """Create model from configuration"""
-        # Extract the hyperparameters from config
-        serializable_hp = config.pop('serializable_hp')
-        normalisation_fitted = config.pop('normalisation_fitted')
+        try:
+            # Extract the hyperparameters from config
+            serializable_hp = config.pop('serializable_hp')
+            normalisation_fitted = config.pop('normalisation_fitted')
+        except KeyError as e:
+            raise ValueError(f"Missing required config key: {e}")
         
-        # Create a mock hp object with the serializable attributes
+        # Create a mock hp object with the serializable attributes. Needs items() and __getitem__
         class MockHP:
-            pass
-        
-        hp = MockHP()
-        for key, value in serializable_hp.items():
-            setattr(hp, key, value)
+            def __init__(self, data):
+                if not isinstance(data, dict):
+                    raise TypeError("HP data must be a dictionary")
+                # store in dict form
+                self._data = dict(data)
+                # Also assign as attributes for legacy attribute access
+                for k, v in self._data.items():
+                    setattr(self, k, v)
+
+            def items(self):
+                return self._data.items()
+
+            def __getitem__(self, key):
+                if key not in self._data:
+                    raise KeyError(f"HP key '{key}' not found")
+                return self._data[key]
+
+        hp = MockHP(serializable_hp)
         
         # Create the model
         model = cls(hp, **config)
@@ -292,7 +431,16 @@ class GlobalModel(tf.keras.Model):
         
         # If normalisation was fitted, build the model
         if normalisation_fitted:
-            model.build(input_shape=[(None, 7), (None,)])
+            try:
+                model.build(input_shape=[(None, 7), (None,)])
+                # Verify that normalization layers are actually fitted
+                if not model.is_normalisation_fitted:
+                    # Reset flag if layers aren't actually fitted
+                    model._normalisation_fitted = False
+            except Exception as e:
+                # Model building failed, but we can still return the model
+                # It will build on first call
+                model._normalisation_fitted = False
         
         return model
 
@@ -319,9 +467,17 @@ class TrainingModel(tf.keras.Model):
         """Get configuration for saving"""
         config = super().get_config()
         # Note: TrainingModel is just a wrapper, the GlobalModel holds all the state
+        # We don't save the global_model reference as it should be reconstructed
         return config
     
     @classmethod
-    def from_config(cls, config, global_model):
+    def from_config(cls, config, custom_objects=None):
         """Create training model from configuration"""
+        # Note: This method should not be used directly as TrainingModel
+        # requires a GlobalModel instance. Instead, create GlobalModel first,
+        # then wrap it with TrainingModel.
+        raise NotImplementedError(
+            "TrainingModel cannot be created from config alone. "
+            "Create GlobalModel first, then use TrainingModel(global_model)."
+        )
         return cls(global_model, **config)
