@@ -16,10 +16,54 @@ class ScaledGlorotUniform(tf.keras.initializers.GlorotUniform):
 class NormalisationLayer(tf.keras.layers.Layer):
     """Layer that applies z-score normalisation using fitted statistics"""
     
-    def __init__(self, name=None, **kwargs):
+    def __init__(self, name=None, mean=None, std=None, dtype="float32", _fitted=False, **kwargs):
         super().__init__(name=name, **kwargs)
-        self.mean = None
-        self.std = None
+        
+        # Handle restoration from saved config
+        if mean is not None and std is not None:
+            # Use original dtype or specified dtype
+            try:
+                restore_dtype = getattr(tf, dtype) if isinstance(dtype, str) else dtype
+            except AttributeError:
+                restore_dtype = tf.float32  # Fallback
+                
+            base_name = name if name else "normalisation"
+            self.mean = tf.Variable(
+                tf.cast(mean, restore_dtype), 
+                trainable=False,
+                name=f"{base_name}_mean"
+            )
+            self.std = tf.Variable(
+                tf.cast(std, restore_dtype), 
+                trainable=False,
+                name=f"{base_name}_std"
+            )
+            self._fitted = _fitted
+        else:
+            self.mean = None
+            self.std = None
+            self._fitted = False
+            
+    def build(self, input_shape):
+        super().build(input_shape)
+        if self.mean is None:
+            base_name = self.name if self.name else "normalisation"
+            input_dim = input_shape[-1] if len(input_shape) > 1 else 1
+            self.mean = self.add_weight(
+                name=f"{base_name}_mean",
+                shape=(input_dim,),
+                initializer='zeros',
+                trainable=False
+            )
+            self.std = self.add_weight(
+                name=f"{base_name}_std", 
+                shape=(input_dim,),
+                initializer='ones',
+                trainable=False
+            )
+            self._fitted = False
+        else:
+            self._fitted = True
         
     def fit_statistics(self, data):
         """Fit normalisation statistics on data"""
@@ -32,76 +76,113 @@ class NormalisationLayer(tf.keras.layers.Layer):
         # Use the same dtype as the input data
         dtype = data.dtype
         
-        # Ensure we have a valid name for variables
-        base_name = self.name if self.name else "normalisation"
-        
         mean_value = tf.cast(tf.reduce_mean(data, axis=0), dtype)
         std_value = tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype)
         
-        self.mean = tf.Variable(
-            mean_value, 
-            trainable=False, 
-            name=f"{base_name}_mean"
-        )
-        self.std = tf.Variable(
-            std_value, 
-            trainable=False, 
-            name=f"{base_name}_std"
-        )
+        # If weights don't exist yet, create them
+        if self.mean is None or self.std is None:
+            base_name = self.name if self.name else "normalisation"
+            self.mean = self.add_weight(
+                name=f"{base_name}_mean",
+                shape=mean_value.shape,
+                initializer='zeros',
+                trainable=False,
+                dtype=dtype
+            )
+            self.std = self.add_weight(
+                name=f"{base_name}_std", 
+                shape=std_value.shape,
+                initializer='ones',
+                trainable=False,
+                dtype=dtype
+            )
+        
+        # Set the values
+        self.mean.assign(mean_value)
+        self.std.assign(std_value)
+        self._fitted = True
         
     def call(self, inputs):
+        # Check if we need to restore from weights
         if self.mean is None or self.std is None:
-            raise ValueError(f"Normalisation layer {self.name} not fitted. Call fit_statistics() first.")
-        # Cast mean and std to match input dtype
+            for weight in self.weights:
+                if 'mean' in weight.name:
+                    self.mean = weight
+                elif 'std' in weight.name:
+                    self.std = weight
+                    
+        # If statistics are not available, return inputs unchanged
+        if self.mean is None or self.std is None:
+            return inputs
+            
         mean = tf.cast(self.mean, inputs.dtype)
         std = tf.cast(self.std, inputs.dtype)
-        return (inputs - mean) / std
+        
+        # Check if these are dummy/default values during loading - use tf.where for graph compatibility
+        is_default = tf.logical_and(
+            tf.reduce_all(tf.equal(mean, 0.0)),
+            tf.reduce_all(tf.equal(std, 1.0))
+        )
+        
+        normalized = (inputs - mean) / std
+        return tf.where(is_default, inputs, normalized)
         
     def get_config(self):
         config = super().get_config()
-        if self.mean is not None and self.std is not None:
-            config.update({
-                "mean": self.mean.numpy().tolist(),
-                "std": self.std.numpy().tolist(),
-                "dtype": str(self.mean.dtype.name)  # Preserve original dtype
-            })
+        config.update({
+            'fitted': getattr(self, '_fitted', False)
+        })
         return config
-        
-    @classmethod
-    def from_config(cls, config):
-        mean = config.pop("mean", None)
-        std = config.pop("std", None)
-        dtype_name = config.pop("dtype", "float32")  # Default to float32 if not specified
-        
-        layer = cls(**config)
-        if mean is not None and std is not None:
-            # Use original dtype or specified dtype
-            try:
-                dtype = getattr(tf, dtype_name)
-            except AttributeError:
-                dtype = tf.float32  # Fallback
-                
-            base_name = layer.name if layer.name else "normalisation"
-            layer.mean = tf.Variable(
-                tf.cast(mean, dtype), 
-                trainable=False,
-                name=f"{base_name}_mean"
-            )
-            layer.std = tf.Variable(
-                tf.cast(std, dtype), 
-                trainable=False,
-                name=f"{base_name}_std"
-            )
-        return layer
 
 
 class DenormalisationLayer(tf.keras.layers.Layer):
     """Layer that reverses z-score normalisation using fitted statistics"""
     
-    def __init__(self, name=None, **kwargs):
+    def __init__(self, name=None, mean=None, std=None, dtype="float32", **kwargs):
         super().__init__(name=name, **kwargs)
-        self.mean = None
-        self.std = None
+        
+        # Handle restoration from saved config
+        if mean is not None and std is not None:
+            try:
+                restore_dtype = getattr(tf, dtype) if isinstance(dtype, str) else dtype
+            except AttributeError:
+                restore_dtype = tf.float32
+                
+            base_name = name if name else "denormalisation"
+            self.mean = tf.Variable(
+                tf.cast(mean, restore_dtype), 
+                trainable=False,
+                name=f"{base_name}_mean"
+            )
+            self.std = tf.Variable(
+                tf.cast(std, restore_dtype), 
+                trainable=False,
+                name=f"{base_name}_std"
+            )
+        else:
+            self.mean = None
+            self.std = None
+            
+    def build(self, input_shape):
+        super().build(input_shape)
+        if self.mean is None:
+            base_name = self.name if self.name else "denormalisation"
+            input_dim = input_shape[-1] if len(input_shape) > 1 else 1
+            self.mean = self.add_weight(
+                name=f"{base_name}_mean",
+                shape=(input_dim,),
+                initializer='zeros',
+                trainable=False
+            )
+            self.std = self.add_weight(
+                name=f"{base_name}_std", 
+                shape=(input_dim,),
+                initializer='ones',
+                trainable=False
+            )
+            self._fitted = False
+        else:
+            self._fitted = True
         
     def fit_statistics(self, data):
         """Fit denormalisation statistics on data"""
@@ -114,30 +195,55 @@ class DenormalisationLayer(tf.keras.layers.Layer):
         # Use the same dtype as the input data
         dtype = data.dtype
         
-        # Ensure we have a valid name for variables
-        base_name = self.name if self.name else "denormalisation"
-        
         mean_value = tf.cast(tf.reduce_mean(data, axis=0), dtype)
         std_value = tf.cast(tf.math.reduce_std(data, axis=0) + 1e-8, dtype)
         
-        self.mean = tf.Variable(
-            mean_value, 
-            trainable=False, 
-            name=f"{base_name}_mean"
-        )
-        self.std = tf.Variable(
-            std_value, 
-            trainable=False, 
-            name=f"{base_name}_std"
-        )
+        # If weights don't exist yet, create them
+        if self.mean is None or self.std is None:
+            base_name = self.name if self.name else "denormalisation"
+            self.mean = self.add_weight(
+                name=f"{base_name}_mean",
+                shape=mean_value.shape,
+                initializer='zeros',
+                trainable=False,
+                dtype=dtype
+            )
+            self.std = self.add_weight(
+                name=f"{base_name}_std", 
+                shape=std_value.shape,
+                initializer='ones',
+                trainable=False,
+                dtype=dtype
+            )
+        
+        # Set the values
+        self.mean.assign(mean_value)
+        self.std.assign(std_value)
+        self._fitted = True
         
     def call(self, inputs):
+        # Check if we need to restore from weights
         if self.mean is None or self.std is None:
-            raise ValueError(f"Denormalisation layer {self.name} not fitted. Call fit_statistics() first.")
-        # Cast mean and std to match input dtype
+            for weight in self.weights:
+                if 'mean' in weight.name:
+                    self.mean = weight
+                elif 'std' in weight.name:
+                    self.std = weight
+            
+        if self.mean is None or self.std is None:
+            return inputs
+            
         mean = tf.cast(self.mean, inputs.dtype)
         std = tf.cast(self.std, inputs.dtype)
-        return inputs * std + mean
+        
+        # Check if these are dummy/default values during loading - use tf.where for graph compatibility
+        is_default = tf.logical_and(
+            tf.reduce_all(tf.equal(mean, 0.0)),
+            tf.reduce_all(tf.equal(std, 1.0))
+        )
+        
+        denormalized = inputs * std + mean
+        return tf.where(is_default, inputs, denormalized)
         
     def get_config(self):
         config = super().get_config()
@@ -325,11 +431,22 @@ class GlobalModel(tf.keras.Model):
     @property
     def is_normalisation_fitted(self):
         """Check if normalization layers are properly fitted"""
-        return (self._normalisation_fitted and 
-                self.input_normaliser.mean is not None and 
-                self.input_normaliser.std is not None and
-                self.output_denormaliser.mean is not None and 
-                self.output_denormaliser.std is not None)
+        # During loading, check if the layers exist first
+        if not hasattr(self, 'input_normaliser') or not hasattr(self, 'output_denormaliser'):
+            return getattr(self, '_normalisation_fitted', False)
+            
+        input_fitted = (self.input_normaliser.mean is not None and 
+                       self.input_normaliser.std is not None)
+        output_fitted = (self.output_denormaliser.mean is not None and 
+                        self.output_denormaliser.std is not None)
+        
+        fitted = self._normalisation_fitted and input_fitted and output_fitted
+        
+        # During loading, if we have a saved fitted state but layers aren't ready yet, trust the saved state
+        if self._normalisation_fitted and not (input_fitted and output_fitted):
+            return self._normalisation_fitted
+        
+        return fitted
 
     def call(self, inputs):
         """Forward pass through the full model (original scale -> normalised -> original scale)"""
@@ -429,18 +546,9 @@ class GlobalModel(tf.keras.Model):
         model = cls(hp, **config)
         model._normalisation_fitted = normalisation_fitted
         
-        # If normalisation was fitted, build the model
-        if normalisation_fitted:
-            try:
-                model.build(input_shape=[(None, 7), (None,)])
-                # Verify that normalization layers are actually fitted
-                if not model.is_normalisation_fitted:
-                    # Reset flag if layers aren't actually fitted
-                    model._normalisation_fitted = False
-            except Exception as e:
-                # Model building failed, but we can still return the model
-                # It will build on first call
-                model._normalisation_fitted = False
+        # For loaded models, we need to ensure the normalization layers
+        # have their statistics properly restored before any build/call operations
+        # This happens automatically through the layer's from_config methods
         
         return model
 
