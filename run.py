@@ -16,6 +16,26 @@ from geometry.compression import form_to_vec, metric_to_vec
 from geometry.patches import patch_indices_to_scalar
 from geometry.normalisation import Normaliser
 
+def weighted_mse_loss(zero_weight=0.1):
+    """MSE loss with reduced weight on structurally zero entries"""
+    # Indices where outputs are identically zero
+    zero_indices = tf.constant([1, 2, 4, 5, 7, 8, 9, 10, 16, 17, 18, 19, 22, 26, 28, 32, 33, 34], dtype=tf.int32)
+    
+    def loss_fn(y_true, y_pred):
+        # Create weight tensor: lower weights for zero indices, 1.0 for others
+        weights = tf.ones_like(y_true)
+        
+        # Reduce weights at zero indices
+        zero_mask = tf.reduce_any(tf.equal(tf.range(tf.shape(y_true)[-1])[None, :], zero_indices[:, None]), axis=0)
+        weights = tf.where(zero_mask, zero_weight, weights)
+        
+        # Compute weighted MSE loss
+        squared_diff = tf.square(y_true - y_pred)
+        weighted_loss = squared_diff * weights
+        return tf.reduce_mean(weighted_loss)
+    
+    return loss_fn
+
 # Main body function for performing the metric training
 def main(hyperparameters_file):
     ###########################################################################
@@ -86,7 +106,7 @@ def main(hyperparameters_file):
     
     # Create training model that operates at normalised scale
     training_model = TrainingModel(global_model)
-    training_model.compile(optimizer=optimiser, loss="MSE")
+    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.05))
 
     # Create validation sample
     if hp["validate"]:
