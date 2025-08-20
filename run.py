@@ -22,12 +22,21 @@ def weighted_mse_loss(zero_weight=0.1):
     zero_indices = tf.constant([1, 2, 4, 5, 7, 8, 9, 10, 16, 17, 18, 19, 22, 26, 28, 32, 33, 34], dtype=tf.int32)
     
     def loss_fn(y_true, y_pred):
-        # Create weight tensor: lower weights for zero indices, 1.0 for others
+        # Create weight tensor: 1.0 for all indices initially
         weights = tf.ones_like(y_true)
         
-        # Reduce weights at zero indices
-        zero_mask = tf.reduce_any(tf.equal(tf.range(tf.shape(y_true)[-1])[None, :], zero_indices[:, None]), axis=0)
-        weights = tf.where(zero_mask, zero_weight, weights)
+        # Create mask for zero indices
+        # For each position in the output vector, check if it's in zero_indices
+        output_dim = tf.shape(y_true)[-1]
+        indices_range = tf.range(output_dim)
+        
+        # Create boolean mask: True where index is in zero_indices
+        zero_mask = tf.reduce_any(
+            tf.equal(indices_range[:, None], zero_indices[None, :]), axis=1
+        )
+        
+        # Apply reduced weight to zero indices
+        weights = tf.where(zero_mask, zero_weight, 1.0)
         
         # Compute weighted MSE loss
         squared_diff = tf.square(y_true - y_pred)
