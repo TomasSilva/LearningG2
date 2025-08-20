@@ -63,12 +63,14 @@ def main(hyperparameters_file):
     if hp["init_learning_rate"] == hp["min_learning_rate"]:
         optimiser = tf.keras.optimizers.Adam(learning_rate=hp["init_learning_rate"])
     else:
-        lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(
+        # Cosine annealing with warm restarts
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
             initial_learning_rate=hp["init_learning_rate"],
-            decay_steps=1000,
-            end_learning_rate=hp["min_learning_rate"],
-            power=1.0
-            )
+            first_decay_steps=50,  # Restart every 50 epochs
+            t_mul=1.5,  # Increase cycle length by 1.5x each restart
+            m_mul=0.8,  # Reduce max LR by 20% each restart
+            alpha=hp["min_learning_rate"] / hp["init_learning_rate"]
+        )
         optimiser = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
     
     # Create the global model (handles original scale I/O)
