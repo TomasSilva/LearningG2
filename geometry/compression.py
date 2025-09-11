@@ -2,9 +2,151 @@
 # Import libraries
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
+
 from math import comb, factorial
 from itertools import permutations, combinations
+
+###########################################################################
+# Functions for fill_triangular and its inverse (adapted from tensorflow-probability)
+def fill_triangular(x, upper=False):
+    """Creates a (batch of) triangular matrix from a vector of inputs.
+
+    Created matrix can be lower- or upper-triangular. (It is more efficient to
+    create the matrix as upper or lower, rather than transpose.)
+
+    Triangular matrix elements are filled in a clockwise spiral. See example,
+    below.
+
+    If `x.shape` is `[b1, b2, ..., bB, d]` then the output shape is
+    `[b1, b2, ..., bB, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
+    `n = int(np.sqrt(0.25 + 2. * m) - 0.5)`.
+
+    Example:
+
+    ```python
+    fill_triangular([1, 2, 3, 4, 5, 6])
+    # ==> [[4, 0, 0],
+    #      [6, 5, 0],
+    #      [3, 2, 1]]
+    ```
+
+
+    Args:
+    x: `Tensor` representing lower (or upper) triangular elements.
+    upper: Python `bool` representing whether output matrix should be upper
+        triangular (`True`) or lower triangular (`False`, default).
+
+    Returns:
+    tril: `Tensor` with lower (or upper) triangular elements filled from `x`.
+
+    Raises:
+    ValueError: if `x` cannot be mapped to a triangular matrix.
+    """
+
+    x = tf.convert_to_tensor(x)
+
+    # Get the last dimension size
+    if x.shape.rank is not None and x.shape[-1] is not None:
+        # Static shape case
+        m = x.shape[-1]
+        # Formula derived by solving for n: m = n(n+1)/2.
+        n = np.sqrt(0.25 + 2. * m) - 0.5
+        if n != np.floor(n):
+            raise ValueError('Input right-most shape ({}) does not '
+                            'correspond to a triangular matrix.'.format(m))
+        n = int(n)
+    else:
+        # Dynamic shape case
+        m = tf.shape(x)[-1]
+        # For derivation, see above. Casting automatically lops off the 0.5, so we
+        # omit it.  We don't validate n is an integer because this has
+        # graph-execution cost; an error will be thrown from the reshape, below.
+        n = tf.cast(
+            tf.sqrt(0.25 + tf.cast(2 * m, dtype=tf.float32)), dtype=tf.int32)
+
+    # Get the rank of x for axis indexing
+    ndims = len(x.shape) if x.shape.rank is not None else tf.rank(x)
+
+    if upper:
+        x_list = [x, tf.reverse(x[..., n:], axis=[ndims - 1])]
+    else:
+        x_list = [x[..., n:], tf.reverse(x, axis=[ndims - 1])]
+
+    # Create new shape for reshaping
+    batch_shape = tf.shape(x)[:-1]
+    new_shape = tf.concat([batch_shape, [n, n]], axis=0)
+
+    x = tf.reshape(tf.concat(x_list, axis=-1), new_shape)
+    x = tf.linalg.band_part(
+        x, num_lower=(0 if upper else -1), num_upper=(-1 if upper else 0))
+
+    return x
+
+
+def fill_triangular_inverse(x, upper=False):
+    """Creates a vector from a (batch of) triangular matrix.
+
+    The vector is created from the lower-triangular or upper-triangular portion
+    depending on the value of the parameter `upper`.
+
+    If `x.shape` is `[b1, b2, ..., bB, n, n]` then the output shape is
+    `[b1, b2, ..., bB, d]` where `d = n (n + 1) / 2`.
+
+    Example:
+    ```python
+    fill_triangular_inverse(
+    [[4, 0, 0],
+        [6, 5, 0],
+        [3, 2, 1]])
+
+    # ==> [1, 2, 3, 4, 5, 6]
+    ```
+
+    Args:
+    x: `Tensor` representing lower (or upper) triangular elements.
+    upper: Python `bool` representing whether output matrix should be upper
+        triangular (`True`) or lower triangular (`False`, default).
+
+    Returns:
+    flat_tril: (Batch of) vector-shaped `Tensor` representing vectorized lower
+        (or upper) triangular elements from `x`.
+    """
+
+    x = tf.convert_to_tensor(x)
+
+    # Get the matrix size n
+    if x.shape.rank is not None and x.shape[-1] is not None:
+        # Static shape case
+        n = x.shape[-1]
+        m = (n * (n + 1)) // 2
+    else:
+        # Dynamic shape case
+        n = tf.shape(x)[-1]
+        m = (n * (n + 1)) // 2
+
+    # Get the rank of x for axis indexing
+    ndims = len(x.shape) if x.shape.rank is not None else tf.rank(x)
+
+    if upper:
+        initial_elements = x[..., 0, :]
+        triangular_portion = x[..., 1:, :]
+    else:
+        initial_elements = tf.reverse(x[..., -1, :], axis=[ndims - 2])
+        triangular_portion = x[..., :-1, :]
+
+    rotated_triangular_portion = tf.reverse(
+        tf.reverse(triangular_portion, axis=[ndims - 1]), axis=[ndims - 2])
+    consolidated_matrix = triangular_portion + rotated_triangular_portion
+
+    # Create shape for reshaping
+    batch_shape = tf.shape(x)[:-2]
+    end_sequence_shape = tf.concat([batch_shape, [n * (n - 1)]], axis=0)
+    end_sequence = tf.reshape(consolidated_matrix, end_sequence_shape)
+
+    y = tf.concat([initial_elements, end_sequence[..., :m - n]], axis=-1)
+
+    return y
+
 
 ###########################################################################
 # Compression functions for rank n antisymmetric form tensors
@@ -158,44 +300,23 @@ def vec_to_form(vectors, n, k):
 def vec_to_metric(lower_triangular_vector):
     """
     Reconstructs a (batch of) full positive-definite matrix from its vectorized lower-triangular Cholesky factor.
-
-    This function assumes the input vector represents a lower-triangular matrix in 
-    compact (vectorized) form, such as one created by `tfp.math.fill_triangular_inverse`. 
-    It then reconstructs the full matrix as L @ Lᵀ.
-
-    Args:
-        lower_triangular_vector (tf.Tensor): A 1D tensor containing the lower-triangular 
-            elements of a matrix in a compact vectorized form.
-
-    Returns:
-        tf.Tensor: A full positive-definite matrix reconstructed from the Cholesky factor.
+    Uses a pure TensorFlow fill_triangular implementation.
     """
-    lower_triangular_matrix = tfp.math.fill_triangular(lower_triangular_vector)
+    lower_triangular_matrix = fill_triangular(lower_triangular_vector)
     full_matrix = tf.matmul(
         lower_triangular_matrix, lower_triangular_matrix, transpose_b=True
     )
-
     return full_matrix
 
 
 def metric_to_vec(full_matrix):
     """
     Converts a (batch of) full positive-definite matrix to a vectorized lower-triangular Cholesky factor.
-    
-    This function performs a Cholesky decomposition on the input matrix and then 
-    returns the lower-triangular factor in vectorized (compact) form.
-    
-    Args:
-        full_matrix (tf.Tensor): A symmetric positive-definite matrix (or batch of matrices).
-    
-    Returns:
-        tf.Tensor: A 1D tensor containing the lower-triangular elements of the Cholesky 
-        factor in vectorized form.
+    Uses a pure TensorFlow fill_triangular_inverse implementation.
     """
     lower_triangular_matrices = tf.linalg.cholesky(full_matrix)
-    lower_triangular_vector = tfp.math.fill_triangular_inverse(
+    lower_triangular_vector = fill_triangular_inverse(
         lower_triangular_matrices
     )
-
     return lower_triangular_vector
 
