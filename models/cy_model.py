@@ -2,9 +2,24 @@
 # Import libraries
 import numpy as np
 import os
+import sys
 import yaml
 import pickle
 import tensorflow as tf
+
+# Setup path for cymetric package  
+import pathlib
+_parent_dir = pathlib.Path(__file__).parent.parent.parent
+_cymetric_dir = _parent_dir / "cymetric"
+if str(_parent_dir) not in sys.path:
+    sys.path.insert(0, str(_parent_dir))
+if str(_cymetric_dir) not in sys.path:
+    sys.path.insert(0, str(_cymetric_dir))
+
+# Create alias to fix cymetric internal imports
+import cymetric
+if hasattr(cymetric, 'cymetric'):
+    sys.modules['cymetric'] = cymetric.cymetric
 
 # Import cymetric functions
 from cymetric.pointgen.pointgen import PointGenerator
@@ -49,7 +64,7 @@ if __name__ == '__main__':
 
     # Define the cymetric NN model (learnt via the Kahler potential)
     nn_phi = tf.keras.Sequential()
-    nn_phi.add(tf.keras.Input(shape=(n_in)))
+    nn_phi.add(tf.keras.Input(shape=(n_in,)))
     for i in range(nlayer):
         nn_phi.add(tf.keras.layers.Dense(nHidden, activation=act))
     nn_phi.add(tf.keras.layers.Dense(n_out, use_bias=False))

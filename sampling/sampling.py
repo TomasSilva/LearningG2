@@ -3,8 +3,23 @@
 import tensorflow as tf
 import numpy as np
 import os
+import sys
 import yaml
 import pickle as pickle
+
+# Setup path for cymetric package
+import pathlib
+_parent_dir = pathlib.Path(__file__).parent.parent.parent
+_cymetric_dir = _parent_dir / "cymetric"
+if str(_parent_dir) not in sys.path:
+    sys.path.insert(0, str(_parent_dir))
+if str(_cymetric_dir) not in sys.path:
+    sys.path.insert(0, str(_cymetric_dir))
+
+# Create alias to fix cymetric internal imports
+import cymetric
+if hasattr(cymetric, 'cymetric'):
+    sys.modules['cymetric'] = cymetric.cymetric
 
 # Import functions
 from geometry.geometry import hermitian_to_kahler_real, holomorphic_volume_form_to_real, compute_gG2
@@ -63,7 +78,7 @@ class LinkSample:
 
     def _prepare_cymodel(self):
         nn_phi = tf.keras.Sequential()
-        nn_phi.add(tf.keras.Input(shape=(self.config['n_in'])))
+        nn_phi.add(tf.keras.Input(shape=(self.config['n_in'],)))
         for _ in range(self.config['nlayer']):
             nn_phi.add(tf.keras.layers.Dense(self.config['nHidden'], activation=self.config['act']))
         nn_phi.add(tf.keras.layers.Dense(self.config['n_out'], use_bias=False))
