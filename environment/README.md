@@ -1,12 +1,13 @@
 ## Setup:
 
 We recommend the use of a virtual environment. Below demonstrated with conda:
+
 ```bash
 # Create new conda environment with Python 3.11
 conda create -n g2_ml python=3.11 -y
 conda activate g2_ml
 
-# Install packages from requirements
+# Install packages (automatically detects platform)
 pip install -r environment/requirements.txt
 
 # Set up Jupyter kernel
@@ -21,7 +22,7 @@ if os.path.exists('../cymetric/cymetric/__init__.py'):
     print('✓ Cymetric package found in correct location')
 else:
     print('✗ Cymetric package not found in parent directory')
-    print('   Ensure cymetric/ is in the same directory as github/')
+    print('   Ensure cymetric/ is in the same directory as LearningG2/')
     print('   Clone from: https://github.com/pythoncymetric/cymetric')
 "
 ```

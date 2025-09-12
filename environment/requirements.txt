@@ -8,11 +8,10 @@ scipy==1.13.1
 matplotlib==3.9.4
 sympy==1.14.0
 
-# TensorFlow ecosystem (Apple Silicon compatible)
+# TensorFlow ecosystem (platform-aware installation)
 tensorflow==2.16.2
-tensorflow-macos==2.16.2
+tensorflow-macos==2.16.2; sys_platform == "darwin"
 tensorflow-io-gcs-filesystem==0.37.1
-tensorflow-estimator==2.14.0
 tensorboard==2.16.2
 tensorboard-data-server==0.7.2
 keras==3.10.0
