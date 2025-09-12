@@ -39,7 +39,7 @@ with tf.GradientTape(persistent=False) as tape:
 # Skip compiled_metrics for cymetric models to avoid compatibility issues
 ```
 
-## 4. Input Layer Shape Fix (`github/models/cy_model.py`)
+## 4. Input Layer Shape Fix (`LearningG2/models/cy_model.py`)
 
 **Issue**: Keras 3.x requires tuple for Input layer shape parameter
 ```python
@@ -47,7 +47,7 @@ with tf.GradientTape(persistent=False) as tape:
 nn_phi.add(tf.keras.Input(shape=(n_in,)))  # Note the comma for tuple
 ```
 
-## 5. TensorFlow Probability Replacement (`github/geometry/compression.py`)
+## 5. TensorFlow Probability Replacement (`LearningG2/geometry/compression.py`)
 
 **Issue**: TensorFlow Probability dependency removed from environment
 ```python
@@ -67,7 +67,7 @@ cd /path/to/your/project
 cp cymetric/cymetric/models/tfmodels.py cymetric/cymetric/models/tfmodels.py.backup
 
 # Copy the fixed version
-cp github/environment/cymetric_compatibility_fixes/tfmodels.py cymetric/cymetric/models/tfmodels.py
+cp LearningG2/environment/cymetric_compatibility_fixes/tfmodels.py cymetric/cymetric/models/tfmodels.py
 ```
 
 ## Verification
