@@ -12,9 +12,9 @@ pip install -r environment/requirements.txt
 # Set up Jupyter kernel
 python -m ipykernel install --user --name g2_ml --display-name "G2 ML Environment"
 ```
-The environment includes a dedicated Jupyter kernel named "G2 ML Environment", and compatibility with [cymetric](https://github.com/pythoncymetric/cymetric) for learning of the metric on the base Calab-Yau manifold. Download the package and place in the same parent directory as this repository. The run the below check to ensure it is correctly accessible by the package.
+The environment includes a dedicated Jupyter kernel named "G2 ML Environment", and compatibility with [cymetric](https://github.com/pythoncymetric/cymetric) for learning of the metric on the base Calab-Yau manifold. Download the package and place in the same parent directory as this repository. Then run the below check to ensure it is correctly accessible by the package.
 ```bash
-# Check cymetric is in parent directory alongside github/
+# Check cymetric is in parent directory alongside LearningG2/
 python -c "
 import os
 if os.path.exists('../cymetric/cymetric/__init__.py'):
