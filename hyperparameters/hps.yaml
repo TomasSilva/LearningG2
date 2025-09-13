@@ -8,7 +8,7 @@ metric: false
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 2000
+num_samples: 200000
 
 ###############################################################################
 # Model set-up
@@ -38,7 +38,7 @@ embedding_dim: 8
 ###############################################################################
 # Training set-up
 # Number of training epochs
-epochs: 2
+epochs: 200
 
 # Batch size for training
 batch_size: 32
