@@ -155,6 +155,19 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     print(f"  Training: {train_coords_massive.shape} → {train_output_nonzero_massive.shape}", flush=True)
     print(f"  Test: {test_coords_massive.shape} → {test_output_nonzero_massive.shape}", flush=True)
     
+    # Analyze data quality and scales
+    print(f"\n=== Data Quality Analysis ===", flush=True)
+    print(f"Input coordinate range: [{tf.reduce_min(train_coords_massive):.6f}, {tf.reduce_max(train_coords_massive):.6f}]", flush=True)
+    print(f"Output G2 range: [{tf.reduce_min(train_output_nonzero_massive):.6f}, {tf.reduce_max(train_output_nonzero_massive):.6f}]", flush=True)
+    print(f"Output mean: {tf.reduce_mean(train_output_nonzero_massive):.6f}, std: {tf.math.reduce_std(train_output_nonzero_massive):.6f}", flush=True)
+    
+    # Check for problematic values
+    near_zero = tf.reduce_sum(tf.cast(tf.abs(train_output_nonzero_massive) < 1e-6, tf.int32))
+    small_values = tf.reduce_sum(tf.cast(tf.abs(train_output_nonzero_massive) < 1e-4, tf.int32))
+    total_values = tf.size(train_output_nonzero_massive)
+    print(f"Near-zero values (<1e-6): {near_zero.numpy()}/{total_values.numpy()} ({near_zero.numpy()/total_values.numpy()*100:.1f}%)", flush=True)
+    print(f"Small values (<1e-4): {small_values.numpy()}/{total_values.numpy()} ({small_values.numpy()/total_values.numpy()*100:.1f}%)", flush=True)
+    
     # ===============================
     # NORMALIZE DATA
     # ===============================
@@ -170,31 +183,42 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     
     print("✅ Normalization complete", flush=True)
     
+    # Analyze normalized data scales  
+    print(f"\n=== Normalized Data Analysis ===", flush=True)
+    print(f"Normalized input mean: {np.mean(train_coords_massive_norm, axis=0)[:3]} (should be ~0)", flush=True)
+    print(f"Normalized input std:  {np.std(train_coords_massive_norm, axis=0)[:3]} (should be ~1)", flush=True)
+    print(f"Normalized output mean: {np.mean(train_output_massive_norm, axis=0)[:3]} (should be ~0)", flush=True)
+    print(f"Normalized output std:  {np.std(train_output_massive_norm, axis=0)[:3]} (should be ~1)", flush=True)
+    
     # ===============================
     # BUILD MODEL
     # ===============================
     
-    print(f"\n=== Building Optimal Model Architecture ===", flush=True)
+    print(f"\n=== Building Improved Model Architecture ===", flush=True)
     
+    # Build improved model with better architecture
     model_massive = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(7,)),
         
-        # Optimal architecture from previous experiments
-        tf.keras.layers.Dense(96, activation='gelu'),
-        tf.keras.layers.Dropout(0.15),
-        
-        tf.keras.layers.Dense(64, activation='gelu'),
+        # Deeper architecture with better activations
+        tf.keras.layers.Dense(128, activation='swish'),
         tf.keras.layers.Dropout(0.1),
         
-        tf.keras.layers.Dense(32, activation='gelu'),
+        tf.keras.layers.Dense(96, activation='swish'),
+        tf.keras.layers.Dropout(0.1),
+        
+        tf.keras.layers.Dense(64, activation='swish'),
+        tf.keras.layers.Dropout(0.05),
+        
+        tf.keras.layers.Dense(32, activation='swish'),
         
         tf.keras.layers.Dense(len(non_zero_indices), activation=None)
     ])
     
-    # Compile model
+    # Compile model with Huber loss for robustness
     model_massive.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.008),
-        loss='mse',
+        loss=tf.keras.losses.Huber(delta=1.0),  # Huber loss instead of MSE
         metrics=['mae']
     )
     
@@ -279,23 +303,36 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     predictions_massive_norm = model_massive.predict(test_coords_massive_norm)
     predictions_massive = output_scaler_massive.inverse_transform(predictions_massive_norm)
     
+    # Scale comparison analysis
+    print(f"\n=== Scale Comparison Analysis ===", flush=True)
+    print(f"Target scales (mean ± std):")
+    for i, idx in enumerate(non_zero_indices):
+        target_mean = np.mean(test_output_nonzero_massive[:, i])
+        target_std = np.std(test_output_nonzero_massive[:, i])
+        pred_mean = np.mean(predictions_massive[:, i])
+        pred_std = np.std(predictions_massive[:, i])
+        print(f"  Component {idx:2d}: Target={target_mean:8.4f}±{target_std:6.4f}, Pred={pred_mean:8.4f}±{pred_std:6.4f}")
+    
     # Calculate metrics
     test_loss_massive = tf.keras.losses.MeanSquaredError()(test_output_nonzero_massive, predictions_massive)
     test_mae_massive = tf.keras.losses.MeanAbsoluteError()(test_output_nonzero_massive, predictions_massive)
     
-    # Calculate MAPE
-    threshold = 1e-6
-    mask_massive = tf.abs(test_output_nonzero_massive) > threshold
-    valid_true_massive = tf.boolean_mask(test_output_nonzero_massive, mask_massive)
-    valid_pred_massive = tf.boolean_mask(predictions_massive, mask_massive)
+    # Calculate robust MAPE avoiding epsilon artifacts
+    abs_error = np.abs(predictions_massive - test_output_nonzero_massive)
+    abs_target = np.abs(test_output_nonzero_massive)
     
-    valid_true_massive = tf.cast(valid_true_massive, tf.float32)
-    valid_pred_massive = tf.cast(valid_pred_massive, tf.float32)
+    # Use dynamic threshold based on data (5th percentile)
+    robust_threshold = np.percentile(abs_target, 5)
+    mask_massive = abs_target > robust_threshold
     
-    if tf.size(valid_true_massive) > 0:
-        mape_massive = tf.reduce_mean(tf.abs((valid_true_massive - valid_pred_massive) / valid_true_massive)) * 100
+    if np.sum(mask_massive) > 0:
+        mape_massive = 100 * np.mean(abs_error[mask_massive] / abs_target[mask_massive])
+        valid_components = np.sum(mask_massive)
     else:
         mape_massive = float('inf')
+        valid_components = 0
+    
+    print(f"Robust MAPE (>{robust_threshold:.2e}): {mape_massive:.2f}% on {valid_components} values")
     
     # Learning analysis
     learning_massive = (history_massive.history['loss'][0] - history_massive.history['loss'][-1]) / history_massive.history['loss'][0] * 100
@@ -415,7 +452,7 @@ def main():
         description='G2 Structure Learning - Massive Scale Training',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--train-samples', type=int, default=100000,
+    parser.add_argument('--train-samples', type=int, default=500000,
                       help='Number of training samples')
     parser.add_argument('--test-samples', type=int, default=10000,
                       help='Number of test samples')
