@@ -173,6 +173,12 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     output_means = np.mean(train_output_nonzero_massive.numpy(), axis=0)
     non_constant_mask = output_stds > 1e-10  # Components with actual variance
     
+    print(f"🔍 Component analysis:", flush=True)
+    print(f"  Total components: {len(output_stds)}", flush=True)
+    print(f"  Std range: [{np.min(output_stds):.2e}, {np.max(output_stds):.2e}]", flush=True)
+    print(f"  Components with std > 1e-10: {np.sum(non_constant_mask)}", flush=True)
+    print(f"  Components with std = 0: {np.sum(output_stds == 0)}", flush=True)
+    
     print(f"Filtering components: {len(output_stds)} → {np.sum(non_constant_mask)} (removed {np.sum(~non_constant_mask)} constant)")
     
     if np.sum(~non_constant_mask) > 0:
@@ -206,6 +212,20 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     print(f"  All filtered components variable: {np.all(filtered_stds > 1e-10)}")
     
     print(f"\n🎯 Remaining active components (indices): {list(filtered_non_zero_indices)}")
+    
+    # CRITICAL CHECK: Verify constant components are actually removed
+    if n_filtered_components == len(non_zero_indices):
+        print("⚠️  WARNING: No components were filtered! This suggests an issue.")
+        print("    Either all components have variance, or filtering logic failed.")
+    else:
+        removed_components = [non_zero_indices[i] for i in range(len(non_zero_indices)) if not non_constant_mask[i]]
+        print(f"✅ Successfully removed components: {removed_components}")
+    
+    # Double-check that we're actually using filtered data
+    print(f"\n🔬 Data verification:")
+    print(f"  Filtered training data shape: {train_output_filtered.shape}")
+    print(f"  Original non-zero data shape: {train_output_nonzero_massive.shape}")
+    print(f"  Are we using filtered data? {train_output_filtered.shape[1] < train_output_nonzero_massive.shape[1]}")
 
     # ===============================
     # NORMALIZE DATA
