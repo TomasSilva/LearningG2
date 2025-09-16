@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 """
-G2 Structure Learning - Massive Scale Training (100K+ samples)
-HPC-ready standalone script for large-scale training experiment
-
-FEATURES:
-- GPU    # ===============================
-    # NORMALIZE DATA WITH ROBUST FILTERING
-    # ===============================
-    
-    #!/usr/bin/env python3
-"""
-G2 Structure Learning - Massive Scale Training (100K+ samples)
+G2 Structure Learning - Massive Scale Training (500K+ samples)
 HPC-ready standalone script for large-scale training experiment
 
 FEATURES:
@@ -20,40 +10,7 @@ FEATURES:
 - Robust loss functions and training callbacks
 - Extensive logging and result visualization
 - Memory-efficient batch processing
-"""
-    
-    # Now normalize safely
-    input_scaler_massive = StandardScaler()
-    output_scaler_massive = StandardScaler()
-    
-    train_coords_massive_norm = input_scaler_massive.fit_transform(train_coords_massive.numpy())
-    train_output_massive_norm = output_scaler_massive.fit_transform(train_output_filtered)
-    test_coords_massive_norm = input_scaler_massive.transform(test_coords_massive.numpy())
-    test_output_massive_norm = output_scaler_massive.transform(test_output_filtered)tection and optimization
-- No command line arguments required (uses sensible defaults)
-- Memory-efficient data handling
-- Progress monitoring with flush=True for HPC environments
-
-Memory Requirements Estimation:
-- Training data: 100K samples × 7 features × 8 bytes = ~5.6 MB
-- Target data: 100K samples × 17 features × 8 bytes = ~13.6 MB  
-- Normalized copies: ~19.2 MB (duplicated)
-- Test data: 10K samples = ~1.9 MB
-- Model parameters: 9,617 × 4 bytes = ~38 KB
-- TensorFlow overhead: ~2-4 GB (CPU) or ~3-5 GB (GPU)
-- Training history: ~50 MB
-- Intermediate calculations: ~500 MB
-TOTAL ESTIMATED: 6-8 GB RAM
-
-Recommended HPC Resources:
-- RAM: 16 GB (safe margin)
-- CPU: 4-8 cores (if no GPU)
-- GPU: Any modern GPU with 4GB+ VRAM (recommended)
-- Time: 1-4 hours (GPU: 1-2h, CPU: 2-4h)
-
-Usage:
-- Simple: python3 train_massive_g2.py
-- Custom: python3 train_massive_g2.py --train-samples 200000 --test-samples 20000
+- Component filtering to remove constant values
 """
 
 import os
@@ -69,6 +26,18 @@ from sklearn.preprocessing import StandardScaler
 
 # Add current directory to Python path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Import custom modules
+try:
+    from sampling.sampling import LinkSample
+    from geometry.compression import form_to_vec
+except ImportError as e:
+    print(f"❌ Import error: {e}", flush=True)
+    print("Make sure you're running from the project root directory", flush=True)
+    sys.exit(1)
+
+# TensorFlow configuration
+print("🔧 Configuring TensorFlow...", flush=True)
 
 # Import G2 project modules
 from sampling.sampling import LinkSample
