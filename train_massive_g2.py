@@ -504,7 +504,7 @@ def main():
         description='G2 Structure Learning - Massive Scale Training',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--train-samples', type=int, default=500000,
+    parser.add_argument('--train-samples', type=int, default=100000,
                       help='Number of training samples')
     parser.add_argument('--test-samples', type=int, default=10000,
                       help='Number of test samples')
