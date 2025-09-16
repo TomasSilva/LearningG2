@@ -49,6 +49,20 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sampling.sampling import LinkSample
 from geometry.compression import form_to_vec
 
+# Configure TensorFlow before any operations
+def configure_tensorflow():
+    """Configure TensorFlow settings before initialization"""
+    try:
+        # Configure CPU threading before any TF operations
+        tf.config.threading.set_intra_op_parallelism_threads(0)
+        tf.config.threading.set_inter_op_parallelism_threads(0)
+    except RuntimeError:
+        # Already configured, ignore
+        pass
+
+# Configure TensorFlow immediately after import
+configure_tensorflow()
+
 def detect_and_setup_device():
     """Detect and configure GPU/CPU device for training"""
     # Check if GPU is available
@@ -69,9 +83,6 @@ def detect_and_setup_device():
         return "GPU"
     else:
         print("💻 No GPU detected, using CPU", flush=True)
-        # Set CPU threads for optimal performance
-        tf.config.threading.set_intra_op_parallelism_threads(0)  # Use all available cores
-        tf.config.threading.set_inter_op_parallelism_threads(0)  # Use all available cores
         return "CPU"
 
 def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_results'):
