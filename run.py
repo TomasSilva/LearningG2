@@ -117,7 +117,7 @@ def main(hyperparameters_file):
     
     # Create training model that operates at normalised scale
     training_model = TrainingModel(global_model)
-    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.05))
+    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.))
 
     # Create validation sample
     if hp["validate"]:
