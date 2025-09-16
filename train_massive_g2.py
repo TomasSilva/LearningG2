@@ -8,46 +8,19 @@ FEATURES:
     # NORMALIZE DATA WITH ROBUST FILTERING
     # ===============================
     
-    print(f"\n🔧 Normalizing data with robust filtering...", flush=True)
-    
-    # First, filter out truly zero-variance components
-    output_stds = np.std(train_output_nonzero_massive.numpy(), axis=0)
-    output_means = np.mean(train_output_nonzero_massive.numpy(), axis=0)
-    non_constant_mask = output_stds > 1e-10  # Components with actual variance
-    
-    print(f"Filtering components: {len(output_stds)} → {np.sum(non_constant_mask)} (removed {np.sum(~non_constant_mask)} constant)")
-    
-    if np.sum(~non_constant_mask) > 0:
-        constant_indices = np.where(~non_constant_mask)[0]
-        print(f"\n🔍 Removed constant components:")
-        for idx in constant_indices:
-            orig_component_idx = non_zero_indices[idx]
-            constant_value = output_means[idx]
-            print(f"  Component {orig_component_idx:2d} (local idx {idx}): constant value = {constant_value:.10f}")
-        
-        print(f"\n📊 All component statistics (before filtering):")
-        for i in range(len(output_stds)):
-            orig_idx = non_zero_indices[i]
-            status = "CONSTANT" if not non_constant_mask[i] else "VARIABLE"
-            print(f"  Component {orig_idx:2d}: mean={output_means[i]:10.6f}, std={output_stds[i]:10.6f} [{status}]")
-    
-    # Filter to only non-constant components
-    train_output_filtered = train_output_nonzero_massive.numpy()[:, non_constant_mask]
-    test_output_filtered = test_output_nonzero_massive.numpy()[:, non_constant_mask]
-    filtered_non_zero_indices = np.array(non_zero_indices)[non_constant_mask]
-    n_filtered_components = np.sum(non_constant_mask)
-    
-    print(f"\n✅ Final filtered dataset:")
-    print(f"  Original components: {len(non_zero_indices)} → Active components: {n_filtered_components}")
-    print(f"  Training shape: {train_output_filtered.shape}")
-    print(f"  Test shape: {test_output_filtered.shape}")
-    
-    # Verify filtering worked - check remaining components have variance
-    filtered_stds = np.std(train_output_filtered, axis=0)
-    print(f"  Minimum std in filtered data: {np.min(filtered_stds):.2e}")
-    print(f"  All filtered components variable: {np.all(filtered_stds > 1e-10)}")
-    
-    print(f"\n🎯 Remaining active components (indices): {list(filtered_non_zero_indices)}")
+    #!/usr/bin/env python3
+"""
+G2 Structure Learning - Massive Scale Training (100K+ samples)
+HPC-ready standalone script for large-scale training experiment
+
+FEATURES:
+- GPU/CPU auto-detection with performance optimization
+- Comprehensive data generation with LinkSample
+- Advanced neural architecture with regularization
+- Robust loss functions and training callbacks
+- Extensive logging and result visualization
+- Memory-efficient batch processing
+"""
     
     # Now normalize safely
     input_scaler_massive = StandardScaler()
@@ -221,17 +194,62 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     print(f"Small values (<1e-4): {small_values.numpy()}/{total_values.numpy()} ({small_values.numpy()/total_values.numpy()*100:.1f}%)", flush=True)
     
     # ===============================
+    # FILTER CONSTANT COMPONENTS
+    # ===============================
+    
+    print(f"\n🔧 Filtering constant components...", flush=True)
+    
+    # First, filter out truly zero-variance components
+    output_stds = np.std(train_output_nonzero_massive.numpy(), axis=0)
+    output_means = np.mean(train_output_nonzero_massive.numpy(), axis=0)
+    non_constant_mask = output_stds > 1e-10  # Components with actual variance
+    
+    print(f"Filtering components: {len(output_stds)} → {np.sum(non_constant_mask)} (removed {np.sum(~non_constant_mask)} constant)")
+    
+    if np.sum(~non_constant_mask) > 0:
+        constant_indices = np.where(~non_constant_mask)[0]
+        print(f"\n🔍 Removed constant components:")
+        for idx in constant_indices:
+            orig_component_idx = non_zero_indices[idx]
+            constant_value = output_means[idx]
+            print(f"  Component {orig_component_idx:2d} (local idx {idx}): constant value = {constant_value:.10f}")
+        
+        print(f"\n📊 All component statistics (before filtering):")
+        for i in range(len(output_stds)):
+            orig_idx = non_zero_indices[i]
+            status = "CONSTANT" if not non_constant_mask[i] else "VARIABLE"
+            print(f"  Component {orig_idx:2d}: mean={output_means[i]:10.6f}, std={output_stds[i]:10.6f} [{status}]")
+    
+    # Filter to only non-constant components
+    train_output_filtered = train_output_nonzero_massive.numpy()[:, non_constant_mask]
+    test_output_filtered = test_output_nonzero_massive.numpy()[:, non_constant_mask]
+    filtered_non_zero_indices = np.array(non_zero_indices)[non_constant_mask]
+    n_filtered_components = np.sum(non_constant_mask)
+    
+    print(f"\n✅ Final filtered dataset:")
+    print(f"  Original components: {len(non_zero_indices)} → Active components: {n_filtered_components}")
+    print(f"  Training shape: {train_output_filtered.shape}")
+    print(f"  Test shape: {test_output_filtered.shape}")
+    
+    # Verify filtering worked - check remaining components have variance
+    filtered_stds = np.std(train_output_filtered, axis=0)
+    print(f"  Minimum std in filtered data: {np.min(filtered_stds):.2e}")
+    print(f"  All filtered components variable: {np.all(filtered_stds > 1e-10)}")
+    
+    print(f"\n🎯 Remaining active components (indices): {list(filtered_non_zero_indices)}")
+
+    # ===============================
     # NORMALIZE DATA
     # ===============================
     
-    print(f"\n🔄 Normalizing massive dataset...", flush=True)
+    print(f"\n🔄 Normalizing filtered dataset...", flush=True)
     input_scaler_massive = StandardScaler()
     output_scaler_massive = StandardScaler()
     
     train_coords_massive_norm = input_scaler_massive.fit_transform(train_coords_massive.numpy())
-    train_output_massive_norm = output_scaler_massive.fit_transform(train_output_nonzero_massive.numpy())
+    train_output_massive_norm = output_scaler_massive.fit_transform(train_output_filtered)
     test_coords_massive_norm = input_scaler_massive.transform(test_coords_massive.numpy())
-    test_output_massive_norm = output_scaler_massive.transform(test_output_nonzero_massive.numpy())
+    test_output_massive_norm = output_scaler_massive.transform(test_output_filtered)
     
     print("✅ Normalization complete", flush=True)
     
