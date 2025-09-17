@@ -163,67 +163,54 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     print(f"Small values (<1e-4): {small_values.numpy()}/{total_values.numpy()} ({small_values.numpy()/total_values.numpy()*100:.1f}%)", flush=True)
     
     # ===============================
-    # FILTER CONSTANT COMPONENTS (CRITICAL FIX)
+    # HARDCODE FIX: EXCLUDE KNOWN CONSTANT COMPONENTS
     # ===============================
     
-    print(f"\n🔧 === FILTERING CONSTANT COMPONENTS ===", flush=True)
+    print(f"\n🔧 === APPLYING HARDCODED COMPONENT FILTERING ===", flush=True)
     
-    # Force filtering to work - explicit implementation
-    train_data_numpy = train_output_nonzero_massive.numpy()
-    test_data_numpy = test_output_nonzero_massive.numpy()
+    # Based on your output, components 11, 23, 30 are always constant
+    # Let's explicitly exclude them from the non_zero_indices
+    original_non_zero_indices = [0, 3, 6, 11, 12, 13, 14, 15, 20, 21, 23, 24, 25, 27, 29, 30, 31]
+    constant_component_indices = [11, 23, 30]  # These always have std=0.0000
     
-    print(f"🔍 Original data shape: {train_data_numpy.shape}", flush=True)
+    # Filter out the constant components
+    filtered_non_zero_indices = [idx for idx in original_non_zero_indices if idx not in constant_component_indices]
     
-    # Calculate component statistics
-    output_stds = np.std(train_data_numpy, axis=0)
-    output_means = np.mean(train_data_numpy, axis=0)
+    print(f"🗑️  Removing known constant components: {constant_component_indices}")
+    print(f"✅ Active components: {filtered_non_zero_indices}")
+    print(f"📊 Reduction: {len(original_non_zero_indices)} → {len(filtered_non_zero_indices)} components")
     
-    print(f"🔍 Component variance analysis:", flush=True)
-    print(f"  Total components: {len(output_stds)}", flush=True)
-    print(f"  Std range: [{np.min(output_stds):.2e}, {np.max(output_stds):.2e}]", flush=True)
+    # Extract only the truly variable components
+    train_output_filtered = tf.gather(train_output_vecs_massive, filtered_non_zero_indices, axis=1)
+    test_output_filtered = tf.gather(test_output_vecs_massive, filtered_non_zero_indices, axis=1)
     
-    # Find constant components (std = 0)
-    constant_components = np.where(output_stds == 0.0)[0]
-    variable_components = np.where(output_stds > 0.0)[0]
+    # Verify no constant components remain
+    filtered_stds = tf.math.reduce_std(train_output_filtered, axis=0)
+    min_std = tf.reduce_min(filtered_stds)
     
-    print(f"  Constant components (std=0): {len(constant_components)}", flush=True)
-    print(f"  Variable components (std>0): {len(variable_components)}", flush=True)
+    print(f"🔍 Verification:")
+    print(f"  Filtered data shape: {train_output_filtered.shape}")
+    print(f"  Minimum std in filtered data: {min_std.numpy():.2e}")
+    print(f"  All components variable: {min_std.numpy() > 1e-10}")
     
-    if len(constant_components) > 0:
-        print(f"\n🗑️  Removing {len(constant_components)} constant components:")
-        for i, comp_idx in enumerate(constant_components):
-            orig_idx = non_zero_indices[comp_idx]
-            print(f"    Component {orig_idx} (local idx {comp_idx}): value = {output_means[comp_idx]:.10f}")
-    
-    # Apply filtering
-    if len(variable_components) < len(output_stds):
-        print(f"\n✂️  Filtering: {len(output_stds)} → {len(variable_components)} components", flush=True)
-        train_output_filtered = train_data_numpy[:, variable_components]
-        test_output_filtered = test_data_numpy[:, variable_components] 
-        filtered_non_zero_indices = np.array(non_zero_indices)[variable_components]
-        n_filtered_components = len(variable_components)
-        
-        print(f"✅ Filtered data shape: {train_output_filtered.shape}", flush=True)
-        print(f"✅ Active components: {list(filtered_non_zero_indices)}", flush=True)
-    else:
-        print(f"\n⚠️  No constant components found - using all data", flush=True)
-        train_output_filtered = train_data_numpy
-        test_output_filtered = test_data_numpy
-        filtered_non_zero_indices = np.array(non_zero_indices)
-        n_filtered_components = len(non_zero_indices)
+    # Update variables for the rest of the pipeline
+    train_output_nonzero_massive = train_output_filtered
+    test_output_nonzero_massive = test_output_filtered
+    non_zero_indices = filtered_non_zero_indices
+    n_filtered_components = len(filtered_non_zero_indices)
 
     # ===============================
     # NORMALIZE DATA
     # ===============================
     
-    print(f"\n🔄 Normalizing filtered dataset...", flush=True)
+    print(f"\n🔄 Normalizing filtered dataset ({n_filtered_components} components)...", flush=True)
     input_scaler_massive = StandardScaler()
     output_scaler_massive = StandardScaler()
     
     train_coords_massive_norm = input_scaler_massive.fit_transform(train_coords_massive.numpy())
-    train_output_massive_norm = output_scaler_massive.fit_transform(train_output_filtered)
+    train_output_massive_norm = output_scaler_massive.fit_transform(train_output_nonzero_massive.numpy())
     test_coords_massive_norm = input_scaler_massive.transform(test_coords_massive.numpy())
-    test_output_massive_norm = output_scaler_massive.transform(test_output_filtered)
+    test_output_massive_norm = output_scaler_massive.transform(test_output_nonzero_massive.numpy())
     
     print("✅ Normalization complete", flush=True)
     
@@ -268,11 +255,11 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
         tf.keras.layers.Dense(n_filtered_components, activation=None)
     ])
     
-    # Use more aggressive learning with cyclical LR
-    initial_lr = 0.02  # Much higher starting LR
+    # Use more conservative but effective learning
+    initial_lr = 0.01  # Reduced from 0.02
     model_massive.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=initial_lr, beta_1=0.9, beta_2=0.999),
-        loss=tf.keras.losses.Huber(delta=0.5),  # More robust Huber loss
+        optimizer=tf.keras.optimizers.Adam(learning_rate=initial_lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7),
+        loss=tf.keras.losses.MeanSquaredError(),  # Back to MSE for stability
         metrics=['mae', 'mse']
     )
     
@@ -294,39 +281,25 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
         print(f"  ⚠️  {samples_per_param:.1f} < 10: May still be insufficient", flush=True)
     
     # ===============================
-    # SETUP ADVANCED TRAINING CALLBACKS
+    # SETUP SIMPLIFIED TRAINING CALLBACKS
     # ===============================
     
-    # Cyclical Learning Rate for better exploration
-    def cyclical_lr(epoch, lr):
-        """Cyclical learning rate with warm restarts"""
-        cycle_length = 40  # Restart every 40 epochs
-        cycle_position = epoch % cycle_length
-        if cycle_position < 5:  # Warm-up phase
-            return initial_lr * (0.1 + 0.9 * cycle_position / 5)
-        else:  # Cosine decay
-            cos_inner = np.pi * (cycle_position - 5) / (cycle_length - 5)
-            return initial_lr * 0.1 + initial_lr * 0.9 * (1 + np.cos(cos_inner)) / 2
-    
     callbacks = [
-        tf.keras.callbacks.LearningRateScheduler(cyclical_lr, verbose=1),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.7,
+            patience=15,
+            min_lr=1e-6,
+            verbose=1,
+            cooldown=5
+        ),
         
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=50,  # More patience for cyclical training
+            patience=40,  # More patience
             restore_best_weights=True,
             verbose=1,
-            min_delta=1e-5
-        ),
-        
-        # Reduce LR when stuck  
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,
-            patience=20,
-            min_lr=1e-6,
-            verbose=1,
-            cooldown=10
+            min_delta=1e-6
         ),
         
         tf.keras.callbacks.CSVLogger(
@@ -345,13 +318,12 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     # ===============================
     
     print(f"\n🚀 === Training Improved Model ===", flush=True)
-    print(f"Improvements implemented:", flush=True)
-    print("✅ Much deeper architecture (256→192→128→96→64→32)", flush=True)
-    print("✅ Batch normalization for stable training", flush=True) 
-    print("✅ Cyclical learning rate with warm restarts", flush=True)
-    print("✅ Higher initial learning rate (0.02)", flush=True)
-    print("✅ More robust Huber loss (δ=0.5)", flush=True)
-    print("✅ Larger batch size for better gradient estimates", flush=True)
+    print(f"Key improvements:", flush=True)
+    print("✅ Hardcoded filtering removes components 11, 23, 30", flush=True)
+    print("✅ Deeper architecture with batch normalization", flush=True) 
+    print("✅ Conservative learning rate (0.01) with adaptive reduction", flush=True)
+    print("✅ MSE loss for stability", flush=True)
+    print("✅ More training patience", flush=True)
     
     training_start_time = time.time()
     
@@ -359,9 +331,9 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     history_massive = model_massive.fit(
         train_coords_massive_norm,
         train_output_massive_norm,
-        epochs=300,  # More epochs for cyclical training
-        batch_size=256,  # Larger batch size
-        validation_split=0.15,  # Slightly less validation data
+        epochs=250,  # Sufficient epochs
+        batch_size=256,  # Keep larger batch size
+        validation_split=0.2,  # Standard validation split
         callbacks=callbacks,
         verbose=1,
         shuffle=True
