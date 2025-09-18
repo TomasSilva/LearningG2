@@ -207,10 +207,30 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     input_scaler_massive = StandardScaler()
     output_scaler_massive = StandardScaler()
     
+    # Normalize data
     train_coords_massive_norm = input_scaler_massive.fit_transform(train_coords_massive.numpy())
     train_output_massive_norm = output_scaler_massive.fit_transform(train_output_nonzero_massive.numpy())
     test_coords_massive_norm = input_scaler_massive.transform(test_coords_massive.numpy())
     test_output_massive_norm = output_scaler_massive.transform(test_output_nonzero_massive.numpy())
+    
+    # CRITICAL: Verify normalization worked
+    print(f"\n🔍 === NORMALIZATION VERIFICATION ===", flush=True)
+    print(f"Input normalization:", flush=True)
+    print(f"  Mean: {np.mean(train_coords_massive_norm, axis=0)[:3]} (should be ~0)", flush=True)
+    print(f"  Std:  {np.std(train_coords_massive_norm, axis=0)[:3]} (should be ~1)", flush=True)
+    
+    print(f"Output normalization:", flush=True)
+    output_means = np.mean(train_output_massive_norm, axis=0)
+    output_stds = np.std(train_output_massive_norm, axis=0)
+    print(f"  Mean range: [{np.min(output_means):.2e}, {np.max(output_means):.2e}] (should be ~0)", flush=True)
+    print(f"  Std range:  [{np.min(output_stds):.2e}, {np.max(output_stds):.2e}] (should be ~1)", flush=True)
+    print(f"  All means < 0.1: {np.all(np.abs(output_means) < 0.1)}", flush=True)
+    print(f"  All stds > 0.9: {np.all(output_stds > 0.9)}", flush=True)
+    
+    if not (np.all(np.abs(output_means) < 0.1) and np.all(output_stds > 0.9)):
+        print(f"⚠️  WARNING: Normalization may have failed!", flush=True)
+    else:
+        print(f"✅ Normalization successful!", flush=True)
     
     print("✅ Normalization complete", flush=True)
     
@@ -325,6 +345,13 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     print("✅ MSE loss for stability", flush=True)
     print("✅ More training patience", flush=True)
     
+    # FINAL VERIFICATION: Check training data normalization
+    print(f"\n🔍 Pre-training data check:", flush=True)
+    print(f"  Training input shape: {train_coords_massive_norm.shape}", flush=True)
+    print(f"  Training output shape: {train_output_massive_norm.shape}", flush=True)
+    print(f"  Output means: {np.mean(train_output_massive_norm, axis=0)[:5]}", flush=True)
+    print(f"  Output stds: {np.std(train_output_massive_norm, axis=0)[:5]}", flush=True)
+    
     training_start_time = time.time()
     
     # Train with improved settings
@@ -348,27 +375,36 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     
     print(f"\n=== Evaluating Model ===", flush=True)
     
-    # Predictions on test set
+    # Predictions on test set (normalized)
     predictions_massive_norm = model_massive.predict(test_coords_massive_norm)
-    predictions_massive = output_scaler_massive.inverse_transform(predictions_massive_norm)
     
-    # Scale comparison analysis - use filtered data
+    # Transform back to original space for evaluation
+    predictions_massive = output_scaler_massive.inverse_transform(predictions_massive_norm)
+    test_output_original = test_output_nonzero_massive.numpy()  # Original space targets
+    
+    # VERIFICATION: Check that we're using the right data shapes
+    print(f"🔍 Data shape verification:", flush=True)
+    print(f"  Predictions shape: {predictions_massive.shape}", flush=True)
+    print(f"  Targets shape: {test_output_original.shape}", flush=True)
+    print(f"  Shapes match: {predictions_massive.shape == test_output_original.shape}", flush=True)
+    
+    # Scale comparison analysis - use filtered indices correctly
     print(f"\n=== Scale Comparison Analysis ===", flush=True)
     print(f"Target scales (mean ± std):")
     for i, idx in enumerate(filtered_non_zero_indices):
-        target_mean = np.mean(test_output_filtered[:, i])
-        target_std = np.std(test_output_filtered[:, i])
+        target_mean = np.mean(test_output_original[:, i])
+        target_std = np.std(test_output_original[:, i])
         pred_mean = np.mean(predictions_massive[:, i])
         pred_std = np.std(predictions_massive[:, i])
         print(f"  Component {idx:2d}: Target={target_mean:8.4f}±{target_std:6.4f}, Pred={pred_mean:8.4f}±{pred_std:6.4f}")
     
-    # Calculate metrics
-    test_loss_massive = tf.keras.losses.MeanSquaredError()(test_output_filtered, predictions_massive)
-    test_mae_massive = tf.keras.losses.MeanAbsoluteError()(test_output_filtered, predictions_massive)
+    # Calculate metrics in original space
+    test_loss_massive = tf.keras.losses.MeanSquaredError()(test_output_original, predictions_massive)
+    test_mae_massive = tf.keras.losses.MeanAbsoluteError()(test_output_original, predictions_massive)
     
     # Calculate robust MAPE avoiding epsilon artifacts
-    abs_error = np.abs(predictions_massive - test_output_filtered)
-    abs_target = np.abs(test_output_filtered)
+    abs_error = np.abs(predictions_massive - test_output_original)
+    abs_target = np.abs(test_output_original)
     
     # Use dynamic threshold based on data (5th percentile)
     robust_threshold = np.percentile(abs_target, 5)
