@@ -245,41 +245,85 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     # BUILD MODEL
     # ===============================
     
-    print(f"\n=== Building Improved Model Architecture ===", flush=True)
+    print(f"\n=== Building Advanced Model Architecture ===", flush=True)
     
-    # Build improved model with much better architecture for this problem
-    model_massive = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(7,)),
-        
-        # Much deeper architecture with residual-like connections
-        tf.keras.layers.Dense(256, activation='swish'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.15),
-        
-        tf.keras.layers.Dense(192, activation='swish'), 
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.15),
-        
-        tf.keras.layers.Dense(128, activation='swish'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.1),
-        
-        tf.keras.layers.Dense(96, activation='swish'),
-        tf.keras.layers.Dropout(0.1),
-        
-        tf.keras.layers.Dense(64, activation='swish'),
-        tf.keras.layers.Dropout(0.05),
-        
-        tf.keras.layers.Dense(32, activation='swish'),
-        
-        tf.keras.layers.Dense(n_filtered_components, activation=None)
-    ])
+    # Build advanced model with residual connections and attention-like mechanism
+    inputs = tf.keras.layers.Input(shape=(7,))
+    
+    # Initial feature extraction
+    x = tf.keras.layers.Dense(256, activation='swish')(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+    
+    # Residual blocks for better gradient flow
+    def residual_block(x, units, dropout=0.1):
+        residual = tf.keras.layers.Dense(units, activation=None)(x)
+        x = tf.keras.layers.Dense(units, activation='swish')(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+        x = tf.keras.layers.Dropout(dropout)(x)
+        x = tf.keras.layers.Dense(units, activation=None)(x)
+        x = tf.keras.layers.Add()([x, residual])  # Residual connection
+        x = tf.keras.layers.Activation('swish')(x)
+        return x
+    
+    # Multiple residual blocks
+    x = residual_block(x, 256, 0.15)
+    x = tf.keras.layers.Dense(192, activation='swish')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+    
+    x = residual_block(x, 192, 0.1)
+    x = tf.keras.layers.Dense(128, activation='swish')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+    
+    x = residual_block(x, 128, 0.05)
+    
+    # Output head with separate branches for different scales
+    # Major components branch (high variance)
+    major_features = tf.keras.layers.Dense(64, activation='swish', name='major_features')(x)
+    major_features = tf.keras.layers.Dropout(0.05)(major_features)
+    
+    # Minor components branch (low variance)  
+    minor_features = tf.keras.layers.Dense(32, activation='swish', name='minor_features')(x)
+    minor_features = tf.keras.layers.Dropout(0.05)(minor_features)
+    
+    # Combine features
+    combined = tf.keras.layers.Concatenate()([major_features, minor_features])
+    combined = tf.keras.layers.Dense(64, activation='swish')(combined)
+    
+    # Final output
+    outputs = tf.keras.layers.Dense(n_filtered_components, activation=None, name='predictions')(combined)
+    
+    model_massive = tf.keras.Model(inputs=inputs, outputs=outputs)
+    
+    # Use more sophisticated loss with adaptive weighting
+    class AdaptiveLoss(tf.keras.losses.Loss):
+        def __init__(self, alpha=0.5, **kwargs):
+            super().__init__(**kwargs)
+            self.alpha = alpha
+            
+        def call(self, y_true, y_pred):
+            # Standard MSE
+            mse = tf.reduce_mean(tf.square(y_true - y_pred))
+            
+            # MAE component for robustness
+            mae = tf.reduce_mean(tf.abs(y_true - y_pred))
+            
+            # Combine losses
+            return self.alpha * mse + (1 - self.alpha) * mae
     
     # Use more conservative but effective learning
-    initial_lr = 0.01  # Reduced from 0.02
+    initial_lr = 0.015  # Slightly higher
     model_massive.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=initial_lr, beta_1=0.9, beta_2=0.999, epsilon=1e-7),
-        loss=tf.keras.losses.MeanSquaredError(),  # Back to MSE for stability
+        optimizer=tf.keras.optimizers.Adam(
+            learning_rate=initial_lr, 
+            beta_1=0.9, 
+            beta_2=0.999, 
+            epsilon=1e-7,
+            clipnorm=1.0  # Gradient clipping for stability
+        ),
+        loss=AdaptiveLoss(alpha=0.7),  # MSE + MAE hybrid
         metrics=['mae', 'mse']
     )
     
@@ -301,26 +345,58 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
         print(f"  ⚠️  {samples_per_param:.1f} < 10: May still be insufficient", flush=True)
     
     # ===============================
-    # SETUP SIMPLIFIED TRAINING CALLBACKS
+    # SETUP ADVANCED TRAINING STRATEGY
     # ===============================
     
+    # Cosine annealing with warm restarts
+    def cosine_annealing_with_restarts(epoch, lr):
+        """Cosine annealing with warm restarts for better exploration"""
+        restart_period = 50
+        t_cur = epoch % restart_period
+        t_i = restart_period
+        lr_min = 1e-6
+        lr_max = initial_lr
+        
+        if t_cur == 0:
+            return lr_max
+        else:
+            return lr_min + (lr_max - lr_min) * (1 + np.cos(np.pi * t_cur / t_i)) / 2
+    
+    # Custom callback for monitoring training quality
+    class TrainingQualityCallback(tf.keras.callbacks.Callback):
+        def __init__(self):
+            self.best_loss_improvement = 0
+            
+        def on_epoch_end(self, epoch, logs=None):
+            if epoch > 10:
+                current_improvement = (self.model.history.history['loss'][0] - logs['loss']) / self.model.history.history['loss'][0]
+                if current_improvement > self.best_loss_improvement:
+                    self.best_loss_improvement = current_improvement
+                    if epoch % 20 == 0:
+                        print(f"Best learning improvement so far: {current_improvement*100:.1f}%")
+    
     callbacks = [
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.7,
-            patience=15,
-            min_lr=1e-6,
-            verbose=1,
-            cooldown=5
-        ),
+        tf.keras.callbacks.LearningRateScheduler(cosine_annealing_with_restarts, verbose=0),
         
         tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=40,  # More patience
+            patience=60,  # More patience for cosine restarts
             restore_best_weights=True,
             verbose=1,
             min_delta=1e-6
         ),
+        
+        # Plateau reduction as backup
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.6,
+            patience=25,
+            min_lr=1e-7,
+            verbose=1,
+            cooldown=10
+        ),
+        
+        TrainingQualityCallback(),
         
         tf.keras.callbacks.CSVLogger(
             os.path.join(output_dir, 'training_log.csv')
@@ -337,13 +413,14 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     # TRAIN MODEL
     # ===============================
     
-    print(f"\n🚀 === Training Improved Model ===", flush=True)
-    print(f"Key improvements:", flush=True)
-    print("✅ Hardcoded filtering removes components 11, 23, 30", flush=True)
-    print("✅ Deeper architecture with batch normalization", flush=True) 
-    print("✅ Conservative learning rate (0.01) with adaptive reduction", flush=True)
-    print("✅ MSE loss for stability", flush=True)
-    print("✅ More training patience", flush=True)
+    print(f"\n🚀 === Training Advanced Model ===", flush=True)
+    print(f"Advanced improvements:", flush=True)
+    print("✅ Residual connections for better gradient flow", flush=True)
+    print("✅ Separate feature branches for different scales", flush=True) 
+    print("✅ Adaptive MSE+MAE loss function", flush=True)
+    print("✅ Cosine annealing with warm restarts", flush=True)
+    print("✅ Gradient clipping for stability", flush=True)
+    print("✅ Extended training with quality monitoring", flush=True)
     
     # FINAL VERIFICATION: Check training data normalization
     print(f"\n🔍 Pre-training data check:", flush=True)
@@ -354,13 +431,13 @@ def train_massive_g2_model(n_train=100000, n_test=10000, output_dir='massive_res
     
     training_start_time = time.time()
     
-    # Train with improved settings
+    # Train with advanced settings
     history_massive = model_massive.fit(
         train_coords_massive_norm,
         train_output_massive_norm,
-        epochs=250,  # Sufficient epochs
-        batch_size=256,  # Keep larger batch size
-        validation_split=0.2,  # Standard validation split
+        epochs=300,  # More epochs for cosine annealing
+        batch_size=512,  # Larger batch for better gradient estimates
+        validation_split=0.15,  # Less validation data for more training
         callbacks=callbacks,
         verbose=1,
         shuffle=True
