@@ -141,7 +141,7 @@ def main(hyperparameters_file):
             print(f"{'─'*80}")
         
         # Generate fresh training data
-        train_dataset = LinkSample(n_pts=hp["num_samples"], target_patch=target_patch)
+        train_dataset = LinkSample(n_pts=hp["num_samples"], target_patch=target_patch, dataset_type='train')
         train_sample = tf.convert_to_tensor(train_dataset.link_points())
         # Stack patch indices into 2D vector [one_idx, dropped_idx]
         train_patch_indices = tf.stack([
@@ -162,7 +162,7 @@ def main(hyperparameters_file):
 
         # Generate validation data
         if hp["validate"]:
-            val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch)
+            val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')
             val_sample = tf.convert_to_tensor(val_dataset.link_points())
             # Stack validation patch indices into 2D vector
             val_patch_indices = tf.stack([

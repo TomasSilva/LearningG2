@@ -34,7 +34,7 @@ from cymetric.models.tfmodels import PhiFSModel
 ###########################################################################
 # Class of the generated Link data (i.e. ambient pt coordinates, the G2 3-form, etc)
 class LinkSample:
-    def __init__(self, n_pts, cymodel_name='', target_patch=None):
+    def __init__(self, n_pts, cymodel_name='', target_patch=None, dataset_type='train'):
         """
         Generate Link manifold samples.
         
@@ -44,10 +44,12 @@ class LinkSample:
             target_patch: Optional tuple (one_idx, dropped_idx) to filter for specific patch.
                          If provided, will generate points until n_pts matching this patch are found.
                          If None, generates n_pts points across all patches.
+            dataset_type: String label for logging ('train', 'val', etc.)
         """
         # Set up the data paths
         self.n_pts = n_pts
         self.target_patch = target_patch
+        self.dataset_type = dataset_type
         self.cymodel_name = cymodel_name
         self.dirname = os.path.dirname(os.path.dirname(__file__)) + '/models/cy_models/link_data'
         self.config_path = os.path.dirname(os.path.dirname(__file__)) + f'/models/cy_models/cy_model_config{cymodel_name}.yaml'
@@ -83,10 +85,10 @@ class LinkSample:
         else:
             # Filtered generation: keep generating until we have n_pts from target_patch
             target_one_idx, target_dropped_idx = self.target_patch
-            print(f"Filtering for patch [{target_one_idx}, {target_dropped_idx}]...")
             
             # Initial generation (oversample to reduce iterations)
-            batch_size = max(self.n_pts * 30, 1000)  # Expect ~5% per patch (20 patches)
+            # Expect ~5% per patch (20 patches), so 5x oversample should usually suffice
+            batch_size = max(self.n_pts * 5, 1000)
             collected_points = []
             collected_one_idxs = []
             collected_dropped_idxs = []
@@ -116,8 +118,11 @@ class LinkSample:
                     collected_one_idxs.append(batch_one_idxs[mask])
                     collected_dropped_idxs.append(batch_dropped_idxs[mask])
                     total_collected += n_matched
-                    print(f"  Iteration {iteration}: found {n_matched}/{batch_size} matching points "
-                          f"({total_collected}/{self.n_pts} collected)")
+                    if iteration == 1:
+                        print(f"  Filtering {self.dataset_type} for patch [{target_one_idx}, {target_dropped_idx}]: "
+                              f"{n_matched}/{batch_size} → {total_collected}/{self.n_pts}")
+                    else:
+                        print(f"    Iteration {iteration}: {n_matched}/{batch_size} → {total_collected}/{self.n_pts}")
             
             # Combine and truncate to exactly n_pts
             self.points = np.concatenate(collected_points, axis=0)[:self.n_pts]
@@ -128,8 +133,6 @@ class LinkSample:
             # Load basis (already prepared in first iteration)
             BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
             self.BASIS = prepare_tf_basis(BASIS)
-            
-            print(f"  Collected {self.n_pts} points from patch [{target_one_idx}, {target_dropped_idx}]")
         
         # Generate the link points in the local \mathbb{R}^7 coordinate system
         self.thetas = np.random.uniform(low=0., high=2*np.pi, size=self.cy_points_C5.shape[0]) #...sample a random angle
