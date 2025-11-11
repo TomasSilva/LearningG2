@@ -128,7 +128,7 @@ def main(hyperparameters_file):
     training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.))
 
     ###########################################################################
-    ### Generate fixed validation set (outside loop for consistency) ###
+    ### Generate fixed validation set ###
     if hp["validate"]:
         print("  Generating fixed validation set...")
         val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')

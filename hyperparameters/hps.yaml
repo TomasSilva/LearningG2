@@ -62,8 +62,8 @@ min_learning_rate: 0.0001
 # Validation hyperparameters
 validate: true
 val_print: false
-num_val_samples: 5000  # Increased for more reliable validation
-val_batch_size: 100
+num_val_samples: 5000 
+val_batch_size: 500
 
 # Verbosity level for print logging (e.g., 0 for silent, 1 for progress messages)
 verbosity: 1
