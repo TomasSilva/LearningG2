@@ -6,6 +6,21 @@ import yaml
 import numpy as np
 import tensorflow as tf
 
+# Check GPU availability
+print("\n" + "="*80)
+print("GPU DETECTION")
+print("="*80)
+gpus = tf.config.list_physical_devices('GPU')
+print(f"TensorFlow version: {tf.__version__}")
+print(f"GPUs detected: {len(gpus)}")
+if gpus:
+    for i, gpu in enumerate(gpus):
+        print(f"  GPU {i}: {gpu.name}")
+    print("✓ GPUs are AVAILABLE and will be used for training")
+else:
+    print("✗ No GPUs detected - training will run on CPU")
+print("="*80 + "\n")
+
 # Import functions
 from models.model import (
     GlobalModel, TrainingModel, NormalisationLayer, 
