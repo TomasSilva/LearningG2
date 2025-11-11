@@ -41,8 +41,8 @@ parameter_initialisation_scale: 1.0
 embedding_dim: 8
 
 # Regularization parameters (disable for single patch - simpler problem)
-dropout_rate: 0.1        # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
-l2_regularization: 1e-4   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
+dropout_rate: 0.1           # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
+l2_regularization: 0.0001   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
 
 ###############################################################################
 # Training set-up
