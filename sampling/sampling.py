@@ -158,6 +158,8 @@ class LinkSample:
         hvf_r, hvf_i = holomorphic_volume_form_to_real(self.holomorphic_volume_form)
 
         hermitian_metric = self.cymetric_model(CoordChange_C5R10(self.cy_points_C5)).numpy()
+        # Force hermitian symmetrization to handle GPU numerical precision
+        hermitian_metric = 0.5 * (hermitian_metric + hermitian_metric.conj().transpose(0, 2, 1))
         kahler_form_R6 = hermitian_to_kahler_real(hermitian_metric)
         self.kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
 
