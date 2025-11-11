@@ -404,6 +404,9 @@ class NormalisedModel(tf.keras.Model):
             
             def __getitem__(self, key):
                 return self._data[key]
+            
+            def get(self, key, default=None):
+                return self._data.get(key, default)
         
         hp = MockHP(hp_data)
         return cls(hp, **config)
@@ -565,6 +568,9 @@ class GlobalModel(tf.keras.Model):
                 if key not in self._data:
                     raise KeyError(f"HP key '{key}' not found")
                 return self._data[key]
+            
+            def get(self, key, default=None):
+                return self._data.get(key, default)
 
         hp = MockHP(serializable_hp)
         

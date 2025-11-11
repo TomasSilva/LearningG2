@@ -6,21 +6,6 @@ import yaml
 import numpy as np
 import tensorflow as tf
 
-# Check GPU availability
-print("\n" + "="*80)
-print("GPU DETECTION")
-print("="*80)
-gpus = tf.config.list_physical_devices('GPU')
-print(f"TensorFlow version: {tf.__version__}")
-print(f"GPUs detected: {len(gpus)}")
-if gpus:
-    for i, gpu in enumerate(gpus):
-        print(f"  GPU {i}: {gpu.name}")
-    print("✓ GPUs are AVAILABLE and will be used for training")
-else:
-    print("✗ No GPUs detected - training will run on CPU")
-print("="*80 + "\n")
-
 # Import functions
 from models.model import (
     GlobalModel, TrainingModel, NormalisationLayer, 
@@ -76,6 +61,10 @@ def main(hyperparameters_file):
     if target_patch is not None:
         target_patch = tuple(target_patch)  # Convert list to tuple
         print(f"▸ Target patch: [{target_patch[0]}, {target_patch[1]}]")
+    
+    # Get zero component weight (default to 1.0 for standard MSE)
+    zero_weight = hp.get("zero_component_weight", 1.0)
+    print(f"▸ Zero component weight: {zero_weight}")
     
     ###########################################################################
     ### Set up optimiser (before loop) ###
@@ -140,7 +129,7 @@ def main(hyperparameters_file):
     
     # Create training model that operates at normalised scale
     training_model = TrainingModel(global_model)
-    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.))
+    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=zero_weight))
 
     ###########################################################################
     ### Generate fixed validation set ###

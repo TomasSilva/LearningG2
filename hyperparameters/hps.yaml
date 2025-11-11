@@ -59,6 +59,12 @@ batch_size: 512
 init_learning_rate: 0.001
 min_learning_rate: 0.0001
 
+# Weight applied to structurally zero components in weighted MSE loss
+# 1.0 = treat all components equally (standard MSE)
+# 0.0 = ignore zero components completely (focus only on non-zero components)
+# Values between 0 and 1 reduce but don't eliminate zero component contribution
+zero_component_weight: 0.1
+
 # Validation hyperparameters
 validate: true
 val_print: false
