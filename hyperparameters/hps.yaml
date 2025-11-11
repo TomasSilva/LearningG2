@@ -8,12 +8,12 @@ metric: false
 ###############################################################################
 # Data set-up
 # Number of samples to generate for training
-num_samples: 200000
+num_samples: 500000  # Increased to reduce overfitting
 
 # Target patch filter (optional)
 # Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
 # Set to null to use all patches (default behavior)
-target_patch: null
+target_patch: [0, 1]  # Using all patches for better geometric coverage
 
 ###############################################################################
 # Model set-up
@@ -40,13 +40,17 @@ parameter_initialisation_scale: 1.0
 # Dimension of the patch-index embedding layer
 embedding_dim: 8
 
+# Regularization parameters
+dropout_rate: 0.1        # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
+l2_regularization: 1e-4  # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
+
 ###############################################################################
 # Training set-up
 # Number of training epochs
-epochs: 200
+epochs: 300
 
 # Number of times to resample training data and continue training
-n_data_resamples: 5
+n_data_resamples: 20
 
 # Batch size for training
 batch_size: 512
@@ -58,7 +62,7 @@ min_learning_rate: 0.0001
 # Validation hyperparameters
 validate: true
 val_print: false
-num_val_samples: 500
+num_val_samples: 5000  # Increased for more reliable validation
 val_batch_size: 100
 
 # Verbosity level for print logging (e.g., 0 for silent, 1 for progress messages)

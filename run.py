@@ -128,6 +128,23 @@ def main(hyperparameters_file):
     training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=0.))
 
     ###########################################################################
+    ### Generate fixed validation set (outside loop for consistency) ###
+    if hp["validate"]:
+        print("  Generating fixed validation set...")
+        val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')
+        val_sample = tf.convert_to_tensor(val_dataset.link_points())
+        val_patch_indices = tf.stack([
+            tf.convert_to_tensor(val_dataset.one_idxs, dtype=tf.int32),
+            tf.convert_to_tensor(val_dataset.dropped_idxs, dtype=tf.int32)
+        ], axis=1)
+        if not hp["metric"]:
+            val_output = val_dataset.g2_form
+            val_output_vecs = form_to_vec(tf.convert_to_tensor(val_output))
+        else:
+            val_output = val_dataset.g2_metric
+            val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
+    
+    ###########################################################################
     ### Data resampling loop ###
     if n_resamples > 1:
         print(f"\n{'='*80}")
@@ -159,25 +176,14 @@ def main(hyperparameters_file):
         if resample_idx == 0 and not normalisers_already_fitted:
             print("  Fitting normalisation layers...")
             global_model.fit_normalisers(train_sample, train_output_vecs)
-
-        # Generate validation data
-        if hp["validate"]:
-            val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')
-            val_sample = tf.convert_to_tensor(val_dataset.link_points())
-            # Stack validation patch indices into 2D vector
-            val_patch_indices = tf.stack([
-                tf.convert_to_tensor(val_dataset.one_idxs, dtype=tf.int32),
-                tf.convert_to_tensor(val_dataset.dropped_idxs, dtype=tf.int32)
-            ], axis=1)
-            if not hp["metric"]:
-                val_output = val_dataset.g2_form
-                val_output_vecs = form_to_vec(tf.convert_to_tensor(val_output))
-            else:
-                val_output = val_dataset.g2_metric
-                val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
-            val_output_vecs_normalised = global_model.normalise_targets(val_output_vecs)
-            val_data_normalised = ([val_sample, val_patch_indices], val_output_vecs_normalised)
-        else:
+            
+            # Normalize validation data once after normalisers are fitted
+            if hp["validate"]:
+                val_output_vecs_normalised = global_model.normalise_targets(val_output_vecs)
+                val_data_normalised = ([val_sample, val_patch_indices], val_output_vecs_normalised)
+        
+        # Set validation data (None if not validating)
+        if not hp["validate"]:
             val_data_normalised = None
 
         # Train (continues from previous weights if resample_idx > 0)

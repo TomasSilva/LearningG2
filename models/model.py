@@ -322,26 +322,39 @@ class NormalisedModel(tf.keras.Model):
 
         # Feedforward layers
         initializer = ScaledGlorotUniform(scale=self.hp["parameter_initialisation_scale"])
+        
+        # Get regularization parameters (default to 0 for backward compatibility)
+        dropout_rate = self.hp.get("dropout_rate", 0.0)
+        l2_reg = self.hp.get("l2_regularization", 0.0)
+        regularizer = tf.keras.regularizers.L2(l2_reg) if l2_reg > 0 else None
+        
         x = tf.keras.layers.Dense(
             self.hp["n_hidden"], 
             activation=self.hp["activations"], 
             use_bias=self.hp["use_bias"], 
-            kernel_initializer=initializer
+            kernel_initializer=initializer,
+            kernel_regularizer=regularizer
         )(combined_input)
+        if dropout_rate > 0:
+            x = tf.keras.layers.Dropout(dropout_rate)(x)
         
         for _ in range(self.hp["n_layers"] - 2):
             x = tf.keras.layers.Dense(
                 self.hp["n_hidden"],
                 activation=self.hp["activations"],
                 use_bias=self.hp["use_bias"],
-                kernel_initializer=initializer
+                kernel_initializer=initializer,
+                kernel_regularizer=regularizer
             )(x)
+            if dropout_rate > 0:
+                x = tf.keras.layers.Dropout(dropout_rate)(x)
             
         outputs = tf.keras.layers.Dense(
             self.n_out, 
             activation=None, 
             use_bias=False, 
-            kernel_initializer=initializer
+            kernel_initializer=initializer,
+            kernel_regularizer=regularizer
         )(x)
            
         self.model = tf.keras.Model(
