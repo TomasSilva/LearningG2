@@ -324,8 +324,9 @@ class NormalisedModel(tf.keras.Model):
         initializer = ScaledGlorotUniform(scale=self.hp["parameter_initialisation_scale"])
         
         # Get regularization parameters (default to 0 for backward compatibility)
-        dropout_rate = self.hp.get("dropout_rate", 0.0)
-        l2_reg = self.hp.get("l2_regularization", 0.0)
+        # Ensure they are float type (YAML may parse scientific notation as string)
+        dropout_rate = float(self.hp.get("dropout_rate", 0.0))
+        l2_reg = float(self.hp.get("l2_regularization", 0.0))
         regularizer = tf.keras.regularizers.L2(l2_reg) if l2_reg > 0 else None
         
         x = tf.keras.layers.Dense(
