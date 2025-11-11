@@ -297,18 +297,27 @@ class NormalisedModel(tf.keras.Model):
         else:
             self.n_out = comb(7, 3)  # rank hardcoded as 3 here
             
-        # Define embedding parameters (the 20 is 5*(5-1) which is number of patches)
+        # Define embedding parameters for 2D patch vector [one_idx, dropped_idx]
+        # Each coordinate can be 0-4, representing which coord is set to 1 or dropped
         self.embedding_dim = self.hp["embedding_dim"]
-        self.patch_embedding = tf.keras.layers.Embedding(
-            input_dim=20, output_dim=self.embedding_dim, name="patch_embedding"
+        
+        # Dense layer to embed the 2D patch index vector
+        self.patch_embedding = tf.keras.layers.Dense(
+            self.embedding_dim,
+            activation=None,
+            use_bias=True,
+            name="patch_embedding"
         )
 
         # Define architecture
         coord_input = tf.keras.layers.Input(shape=(7,), name="coord_input")
-        patch_input = tf.keras.layers.Input(shape=(), dtype=tf.int32, name="patch_input")
+        patch_indices_input = tf.keras.layers.Input(shape=(2,), dtype=tf.int32, name="patch_indices_input")
 
-        # Embed patch ID and concatenate with coordinates
-        patch_embed = self.patch_embedding(patch_input)
+        # Convert integer indices to float and embed them using a Lambda layer
+        patch_indices_float = tf.keras.layers.Lambda(lambda x: tf.cast(x, tf.float32))(patch_indices_input)
+        patch_embed = self.patch_embedding(patch_indices_float)
+        
+        # Concatenate coordinates with patch embedding
         combined_input = tf.keras.layers.Concatenate()([coord_input, patch_embed])
 
         # Feedforward layers
@@ -335,7 +344,10 @@ class NormalisedModel(tf.keras.Model):
             kernel_initializer=initializer
         )(x)
            
-        self.model = tf.keras.Model(inputs=[coord_input, patch_input], outputs=outputs)
+        self.model = tf.keras.Model(
+            inputs=[coord_input, patch_indices_input], 
+            outputs=outputs
+        )
 
     def call(self, inputs):
         return self.model(inputs)

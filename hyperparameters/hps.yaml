@@ -10,6 +10,11 @@ metric: false
 # Number of samples to generate for training
 num_samples: 200000
 
+# Target patch filter (optional)
+# Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
+# Set to null to use all patches (default behavior)
+target_patch: null
+
 ###############################################################################
 # Model set-up
 # Import a saved model instead of initiating a new one (null means randomly initialise)
@@ -18,7 +23,7 @@ saved_model_path: ...
 # ...the below are ignored if `saved_model` is true and a model is imported
 
 # Number of hidden units in each layer
-n_hidden: 128
+n_hidden: 256
 
 # Number of layers in the neural network
 n_layers: 4
@@ -40,8 +45,11 @@ embedding_dim: 8
 # Number of training epochs
 epochs: 200
 
+# Number of times to resample training data and continue training
+n_data_resamples: 5
+
 # Batch size for training
-batch_size: 32
+batch_size: 512
 
 # Learning rate for the optimizer
 init_learning_rate: 0.001

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+####NOTE the 'constant componets are actually non-constant, so need to add these back in to be learnt (indices {11,23,30}), but these do have much lower values (1e-9 vs 1e-1)!!
 """
 G2 Structure Learning - Massive Scale Training (500K+ samples)
 HPC-ready standalone script for large-scale training experiment

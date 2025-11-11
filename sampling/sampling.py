@@ -34,9 +34,20 @@ from cymetric.models.tfmodels import PhiFSModel
 ###########################################################################
 # Class of the generated Link data (i.e. ambient pt coordinates, the G2 3-form, etc)
 class LinkSample:
-    def __init__(self, n_pts, cymodel_name=''):
+    def __init__(self, n_pts, cymodel_name='', target_patch=None):
+        """
+        Generate Link manifold samples.
+        
+        Args:
+            n_pts: Target number of points to generate
+            cymodel_name: Name suffix for CY model files
+            target_patch: Optional tuple (one_idx, dropped_idx) to filter for specific patch.
+                         If provided, will generate points until n_pts matching this patch are found.
+                         If None, generates n_pts points across all patches.
+        """
         # Set up the data paths
         self.n_pts = n_pts
+        self.target_patch = target_patch
         self.cymodel_name = cymodel_name
         self.dirname = os.path.dirname(os.path.dirname(__file__)) + '/models/cy_models/link_data'
         self.config_path = os.path.dirname(os.path.dirname(__file__)) + f'/models/cy_models/cy_model_config{cymodel_name}.yaml'
@@ -55,17 +66,70 @@ class LinkSample:
     def _generate_points(self):
         # Set up the point generator for the CY
         self.pg = PointGenerator(self.config['monomials'], self.config['coefficients'], self.config['kmoduli'], self.config['ambient'])
-        kappa = self.pg.prepare_dataset(self.n_pts, self.dirname, val_split=0.)
-        self.pg.prepare_basis(self.dirname, kappa=kappa)
-        data = np.load(os.path.join(self.dirname, 'dataset.npz'))
-        self.points = data['X_train']
-        self.cy_points_C5 = CoordChange_C5R10(self.points, inverse=True)
-        BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
-        self.BASIS = prepare_tf_basis(BASIS)
         
-        # Identify coordinates dropped in the patching
-        self.one_idxs = np.argmax(np.isclose(self.cy_points_C5, complex(1, 0)), axis=1) #...find the indices set to 1 to define the wps patch
-        self.dropped_idxs = self.pg._find_max_dQ_coords(self.cy_points_C5) #...find the indices set to 1 to define the cy patch
+        if self.target_patch is None:
+            # Standard generation: n_pts points across all patches
+            kappa = self.pg.prepare_dataset(self.n_pts, self.dirname, val_split=0.)
+            self.pg.prepare_basis(self.dirname, kappa=kappa)
+            data = np.load(os.path.join(self.dirname, 'dataset.npz'))
+            self.points = data['X_train']
+            self.cy_points_C5 = CoordChange_C5R10(self.points, inverse=True)
+            BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
+            self.BASIS = prepare_tf_basis(BASIS)
+            
+            # Identify coordinates dropped in the patching
+            self.one_idxs = np.argmax(np.isclose(self.cy_points_C5, complex(1, 0)), axis=1)
+            self.dropped_idxs = self.pg._find_max_dQ_coords(self.cy_points_C5)
+        else:
+            # Filtered generation: keep generating until we have n_pts from target_patch
+            target_one_idx, target_dropped_idx = self.target_patch
+            print(f"Filtering for patch [{target_one_idx}, {target_dropped_idx}]...")
+            
+            # Initial generation (oversample to reduce iterations)
+            batch_size = max(self.n_pts * 30, 1000)  # Expect ~5% per patch (20 patches)
+            collected_points = []
+            collected_one_idxs = []
+            collected_dropped_idxs = []
+            
+            iteration = 0
+            total_collected = 0
+            while total_collected < self.n_pts:
+                iteration += 1
+                # Generate batch
+                kappa = self.pg.prepare_dataset(batch_size, self.dirname, val_split=0.)
+                if iteration == 1:  # Only prepare basis once
+                    self.pg.prepare_basis(self.dirname, kappa=kappa)
+                data = np.load(os.path.join(self.dirname, 'dataset.npz'))
+                batch_points = data['X_train']
+                batch_cy_points = CoordChange_C5R10(batch_points, inverse=True)
+                
+                # Identify patches
+                batch_one_idxs = np.argmax(np.isclose(batch_cy_points, complex(1, 0)), axis=1)
+                batch_dropped_idxs = self.pg._find_max_dQ_coords(batch_cy_points)
+                
+                # Filter for target patch
+                mask = (batch_one_idxs == target_one_idx) & (batch_dropped_idxs == target_dropped_idx)
+                n_matched = np.sum(mask)
+                
+                if n_matched > 0:
+                    collected_points.append(batch_points[mask])
+                    collected_one_idxs.append(batch_one_idxs[mask])
+                    collected_dropped_idxs.append(batch_dropped_idxs[mask])
+                    total_collected += n_matched
+                    print(f"  Iteration {iteration}: found {n_matched}/{batch_size} matching points "
+                          f"({total_collected}/{self.n_pts} collected)")
+            
+            # Combine and truncate to exactly n_pts
+            self.points = np.concatenate(collected_points, axis=0)[:self.n_pts]
+            self.cy_points_C5 = CoordChange_C5R10(self.points, inverse=True)
+            self.one_idxs = np.concatenate(collected_one_idxs, axis=0)[:self.n_pts]
+            self.dropped_idxs = np.concatenate(collected_dropped_idxs, axis=0)[:self.n_pts]
+            
+            # Load basis (already prepared in first iteration)
+            BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
+            self.BASIS = prepare_tf_basis(BASIS)
+            
+            print(f"  Collected {self.n_pts} points from patch [{target_one_idx}, {target_dropped_idx}]")
         
         # Generate the link points in the local \mathbb{R}^7 coordinate system
         self.thetas = np.random.uniform(low=0., high=2*np.pi, size=self.cy_points_C5.shape[0]) #...sample a random angle
