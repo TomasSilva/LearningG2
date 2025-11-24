@@ -309,10 +309,12 @@ class NormalisedModel(tf.keras.Model):
         if self.embedding_dim is None:
             # Use one-hot encoding: 2 indices × 5 classes = 10-dimensional vector
             one_idx_onehot = tf.keras.layers.Lambda(
-                lambda x: tf.one_hot(x[:, 0], depth=5)
+                lambda x: tf.one_hot(x[:, 0], depth=5),
+                output_shape=(5,)
             )(patch_indices_input)
             dropped_idx_onehot = tf.keras.layers.Lambda(
-                lambda x: tf.one_hot(x[:, 1], depth=5)
+                lambda x: tf.one_hot(x[:, 1], depth=5),
+                output_shape=(5,)
             )(patch_indices_input)
             patch_embed = tf.keras.layers.Concatenate()([one_idx_onehot, dropped_idx_onehot])
         else:
