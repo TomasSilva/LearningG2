@@ -13,7 +13,7 @@ num_samples: 500000  # Increased to reduce overfitting
 # Target patch filter (optional)
 # Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
 # Set to null to use all patches (default behavior)
-target_patch: [0, 1]  # Using all patches for better geometric coverage
+target_patch: [0, 1] 
 
 ###############################################################################
 # Model set-up
@@ -38,10 +38,13 @@ use_bias: true
 parameter_initialisation_scale: 1.0
 
 # Dimension of the patch-index embedding layer
-embedding_dim: 8
+embedding_dim: null
+
+# Huber loss parameter (set to null to use standard MSE loss)
+huber_delta: 1.0
 
 # Regularization parameters (disable for single patch - simpler problem)
-dropout_rate: 0.1           # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
+dropout_rate: 0.0           # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
 l2_regularization: 0.0001   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
 
 ###############################################################################
@@ -63,7 +66,7 @@ min_learning_rate: 0.0001
 # 1.0 = treat all components equally (standard MSE)
 # 0.0 = ignore zero components completely (focus only on non-zero components)
 # Values between 0 and 1 reduce but don't eliminate zero component contribution
-zero_component_weight: 0.1
+zero_component_weight: 0.0
 
 # Validation hyperparameters
 validate: true

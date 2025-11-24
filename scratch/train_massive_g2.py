@@ -26,8 +26,10 @@ matplotlib.use('Agg')  # Non-interactive backend for HPC
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 
-# Add current directory to Python path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to Python path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+sys.path.insert(0, parent_dir)
 
 # Import custom modules
 try:
@@ -35,7 +37,7 @@ try:
     from geometry.compression import form_to_vec
 except ImportError as e:
     print(f"❌ Import error: {e}", flush=True)
-    print("Make sure you're running from the project root directory", flush=True)
+    print("Make sure the parent directory is accessible", flush=True)
     sys.exit(1)
 
 # TensorFlow configuration

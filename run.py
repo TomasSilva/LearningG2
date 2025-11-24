@@ -16,8 +16,8 @@ from geometry.compression import form_to_vec, metric_to_vec
 # from geometry.patches import patch_indices_to_scalar  # DEPRECATED: now using separate embeddings
 from geometry.normalisation import Normaliser
 
-def weighted_mse_loss(zero_weight=0.1):
-    """MSE loss with reduced weight on structurally zero entries"""
+def weighted_huber_loss(zero_weight=1.0, delta=1.0):
+    """Huber loss with reduced weight on structurally zero entries"""
     # Indices where outputs are identically zero
     zero_indices = tf.constant([1, 2, 4, 5, 7, 8, 9, 10, 16, 17, 18, 19, 22, 26, 28, 32, 33, 34], dtype=tf.int32)
     
@@ -38,9 +38,13 @@ def weighted_mse_loss(zero_weight=0.1):
         # Apply reduced weight to zero indices
         weights = tf.where(zero_mask, zero_weight, 1.0)
         
-        # Compute weighted MSE loss
-        squared_diff = tf.square(y_true - y_pred)
-        weighted_loss = squared_diff * weights
+        # Compute weighted Huber loss
+        error = y_true - y_pred
+        abs_error = tf.abs(error)
+        quadratic = tf.minimum(abs_error, delta)
+        linear = abs_error - quadratic
+        huber = 0.5 * quadratic ** 2 + delta * linear
+        weighted_loss = huber * weights
         return tf.reduce_mean(weighted_loss)
     
     return loss_fn
@@ -62,9 +66,12 @@ def main(hyperparameters_file):
         target_patch = tuple(target_patch)  # Convert list to tuple
         print(f"▸ Target patch: [{target_patch[0]}, {target_patch[1]}]")
     
-    # Get zero component weight (default to 1.0 for standard MSE)
+    # Get zero component weight (default to 1.0 for standard loss)
     zero_weight = hp.get("zero_component_weight", 1.0)
+    # Get Huber loss delta parameter (default to 1.0)
+    huber_delta = hp.get("huber_delta", 1.0)
     print(f"▸ Zero component weight: {zero_weight}")
+    print(f"▸ Huber delta: {huber_delta}")
     
     ###########################################################################
     ### Set up optimiser (before loop) ###
@@ -129,7 +136,7 @@ def main(hyperparameters_file):
     
     # Create training model that operates at normalised scale
     training_model = TrainingModel(global_model)
-    training_model.compile(optimizer=optimiser, loss=weighted_mse_loss(zero_weight=zero_weight))
+    training_model.compile(optimizer=optimiser, loss=weighted_huber_loss(zero_weight=zero_weight, delta=huber_delta))
 
     ###########################################################################
     ### Generate fixed validation set ###

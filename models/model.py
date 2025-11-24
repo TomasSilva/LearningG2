@@ -301,23 +301,32 @@ class NormalisedModel(tf.keras.Model):
         # Each coordinate can be 0-4, representing which coord is set to 1 or dropped
         self.embedding_dim = self.hp["embedding_dim"]
         
-        # Dense layer to embed the 2D patch index vector
-        self.patch_embedding = tf.keras.layers.Dense(
-            self.embedding_dim,
-            activation=None,
-            use_bias=True,
-            name="patch_embedding"
-        )
-
         # Define architecture
         coord_input = tf.keras.layers.Input(shape=(7,), name="coord_input")
         patch_indices_input = tf.keras.layers.Input(shape=(2,), dtype=tf.int32, name="patch_indices_input")
 
-        # Convert integer indices to float and embed them using a Lambda layer
-        patch_indices_float = tf.keras.layers.Lambda(lambda x: tf.cast(x, tf.float32))(patch_indices_input)
-        patch_embed = self.patch_embedding(patch_indices_float)
+        # Handle patch encoding based on embedding_dim
+        if self.embedding_dim is None:
+            # Use one-hot encoding: 2 indices × 5 classes = 10-dimensional vector
+            one_idx_onehot = tf.keras.layers.Lambda(
+                lambda x: tf.one_hot(x[:, 0], depth=5)
+            )(patch_indices_input)
+            dropped_idx_onehot = tf.keras.layers.Lambda(
+                lambda x: tf.one_hot(x[:, 1], depth=5)
+            )(patch_indices_input)
+            patch_embed = tf.keras.layers.Concatenate()([one_idx_onehot, dropped_idx_onehot])
+        else:
+            # Use dense embedding layer
+            self.patch_embedding = tf.keras.layers.Dense(
+                self.embedding_dim,
+                activation=None,
+                use_bias=True,
+                name="patch_embedding"
+            )
+            patch_indices_float = tf.keras.layers.Lambda(lambda x: tf.cast(x, tf.float32))(patch_indices_input)
+            patch_embed = self.patch_embedding(patch_indices_float)
         
-        # Concatenate coordinates with patch embedding
+        # Concatenate coordinates with patch representation
         combined_input = tf.keras.layers.Concatenate()([coord_input, patch_embed])
 
         # Feedforward layers
