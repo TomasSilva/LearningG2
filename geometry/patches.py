@@ -1,4 +1,4 @@
-'''Geometric functions for changing patches / coordinate systems'''
+'''Geometric functions for changing coordinate systems'''
 # Import libraries
 import numpy as np
 import tensorflow as tf
@@ -27,28 +27,25 @@ def CoordChange_C5R10(points, inverse=False):
     else:
         #return point[:,::2] + 1j * point[:,1::2] #...form of (x1, y1, x2, y2, ...)
         return points[:, :points.shape[1] // 2] + 1j * points[:, points.shape[1] // 2:]
-
+    
 
 ###########################################################################
-# Patch transformation functions
-def PatchChange_Coords(coords, input_patch=0, output_patch=0):
-    if input_patch == output_patch:
-        return coords
-    else:
-        ### write this (patches labelled 0-4 with 0 the first patch used as input)
-        return coords ###
-    
-def PatchChange_G2form(coords, forms, input_patch=0, output_patch=0):
-    if input_patch == output_patch:
-        return forms
-    else:
-        ### write this (patches labelled 0-4 with 0 the first patch used as input)
-        return forms
-    
-def PatchChange_G2metric(coords, metrics, input_patch=0, output_patch=0):
-    if input_patch == output_patch:
-        return metrics
-    else:
-        ### write this (patches labelled 0-4 with 0 the first patch used as input)
-        return metrics
-    
+# Function to combine the patch indices into a unique scalar for model input
+# DEPRECATED: Now using separate embeddings for one_idx and dropped_idx
+def patch_indices_to_scalar(i, j):
+    """
+    Maps (i, j) indices with i ≠ j, 0 <= i,j <= 4, to a unique ID in [0, 19].
+    """
+    i = tf.convert_to_tensor(i)
+    j = tf.convert_to_tensor(j)
+
+    # Assert i != j
+    assert_op = tf.debugging.assert_none_equal(i, j, message="Patch indices must satisfy i ≠ j")
+
+    with tf.control_dependencies([assert_op]):
+        offset = tf.cast(j > i, j.dtype)
+        j_pos = j - offset
+        patch_id = i * 4 + j_pos
+
+    return patch_id
+

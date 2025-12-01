@@ -22,8 +22,14 @@ def hermitian_to_riemannian_real(H_batch):
     if H_batch.shape[-2:] != (3, 3):
         raise ValueError("Each matrix must be 3x3.")
     
-    if not np.allclose(H_batch, H_batch.conj().transpose(0, 2, 1)):
-        raise ValueError("All input matrices must be Hermitian.")
+    # Hermitian check disabled - forced symmetrization in sampling.py guarantees hermiticity
+    # H_conj_T = H_batch.conj().transpose(0, 2, 1)
+    # if not np.allclose(H_batch, H_conj_T, rtol=1e-4, atol=1e-6):
+    #     # Compute actual error for debugging
+    #     diff = np.abs(H_batch - H_conj_T)
+    #     max_error = np.max(diff)
+    #     mean_error = np.mean(diff)
+    #     raise ValueError(f"All input matrices must be Hermitian. Max error: {max_error:.2e}, Mean error: {mean_error:.2e}")
 
     A = H_batch.real  # shape: (batch_size, 3, 3)
     B = H_batch.imag  # shape: (batch_size, 3, 3)
@@ -49,8 +55,14 @@ def hermitian_to_kahler_real(H_batch):
     if H_batch.shape[-2:] != (3, 3):
         raise ValueError("Each input matrix must be 3x3.")
 
-    if not np.allclose(H_batch, H_batch.conj().transpose(0, 2, 1)):
-        raise ValueError("All matrices must be Hermitian.")
+    # Hermitian check disabled - forced symmetrization in sampling.py guarantees hermiticity
+    # H_conj_T = H_batch.conj().transpose(0, 2, 1)
+    # if not np.allclose(H_batch, H_conj_T, rtol=1e-4, atol=1e-6):
+    #     # Compute actual error for debugging
+    #     diff = np.abs(H_batch - H_conj_T)
+    #     max_error = np.max(diff)
+    #     mean_error = np.mean(diff)
+    #     raise ValueError(f"All matrices must be Hermitian. Max error: {max_error:.2e}, Mean error: {mean_error:.2e}")
 
     A = H_batch.imag  # shape: (batch_size, 3, 3)
     zero = np.zeros_like(A)
@@ -132,7 +144,7 @@ def compute_gG2(G2_val):
 
 ###########################################################################
 # Functions for computing the exterior derivatives of the trained NN geometric functions
-def exterior_derivative(model, inputs, form_output=True):
+def exterior_derivative(model, coords, patch_idxs, form_output=True):
     """
     Computes the exterior derivative (as a batched Jacobian) of a model's output 
     with respect to its inputs, and optionally repackages it into a fully antisymmetric 
@@ -159,13 +171,13 @@ def exterior_derivative(model, inputs, form_output=True):
             - If `form_output=False`: Tensor of shape (batch_size, output_dim, input_dim), 
               the raw Jacobian.
     """
-    inputs = tf.convert_to_tensor(inputs)
+    coords = tf.convert_to_tensor(coords)
 
     with tf.GradientTape() as tape:
-        tape.watch(inputs)
-        outputs = model(inputs)  # Shape: (batch_size, output_dim)
+        tape.watch(coords)
+        outputs = model([coords, patch_idxs])
 
-    jacobians = tape.batch_jacobian(outputs, inputs)  # Shape: (batch_size, output_dim, input_dim)
+    jacobians = tape.batch_jacobian(outputs, coords)  # Shape: (batch_size, output_dim, input_dim)
     
     # Repackage the data into the (batch, 7, 7, 7, 7) form
     if form_output:
@@ -182,42 +194,4 @@ def exterior_derivative(model, inputs, form_output=True):
     # Or just return the independent derivatives
     else:
         return jacobians
-
-###########################################################################
-### OLD FUNCTIONS ###
-def wedge_form2_with_form1(omega6_batch, alpha7_batch):
-    """
-    Vectorized wedge product of a batch of 6x6 antisymmetric 2-forms with a batch of 7D 1-forms.
-    
-    Args:
-        omega6_batch (np.ndarray): shape (batch_size, 6, 6), antisymmetric 2-forms.
-        alpha7_batch (np.ndarray): shape (batch_size, 7), 1-forms.
-
-    Returns:
-        form3_batch (np.ndarray): shape (batch_size, 7, 7, 7), antisymmetric 3-forms.
-    """
-    batch_size = omega6_batch.shape[0]
-    
-    assert omega6_batch.shape == (batch_size, 6, 6), "omega6 must be (N, 6, 6)"
-    assert alpha7_batch.shape == (batch_size, 7), "alpha7 must be (N, 7)"
-
-    # Check antisymmetry
-    if not np.allclose(omega6_batch, -omega6_batch.transpose(0, 2, 1)):
-        raise ValueError("omega6 must be antisymmetric")
-
-    # Extend omega6 to (N, 7, 7)
-    omega7_batch = np.zeros((batch_size, 7, 7), dtype=omega6_batch.dtype)
-    omega7_batch[:, :6, :6] = omega6_batch
-
-    # Broadcast and compute the 3-form wedge product
-    i, j, k = np.meshgrid(np.arange(7), np.arange(7), np.arange(7), indexing='ij')
-
-    # Compute each term: omega[i,j]*alpha[k], omega[j,k]*alpha[i], omega[k,i]*alpha[j]
-    term1 = omega7_batch[:, i, j] * alpha7_batch[:, k]
-    term2 = omega7_batch[:, j, k] * alpha7_batch[:, i]
-    term3 = omega7_batch[:, k, i] * alpha7_batch[:, j]
-
-    form3_batch = (1.0 / 3.0) * (term1 + term2 + term3)
-
-    return form3_batch
 

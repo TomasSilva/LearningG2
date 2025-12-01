@@ -1,6 +1,64 @@
-numpy
-cython
-tensorflow
-tensorflow-probability
-matplotlib
-pyyaml
+# G2 ML Environment Requirements 
+# CYMetric compatible
+# Python 3.11+ compatible
+
+# Core numerical libraries
+numpy==1.26.4
+scipy==1.13.1
+matplotlib==3.9.4
+sympy==1.14.0
+
+# TensorFlow ecosystem (platform-aware installation)
+tensorflow==2.16.2
+tensorflow-macos==2.16.2; sys_platform == "darwin"
+tensorflow-io-gcs-filesystem==0.37.1
+tensorboard==2.16.2
+tensorboard-data-server==0.7.2
+keras==3.10.0
+
+# TensorFlow dependencies
+absl-py==2.3.1
+astunparse==1.6.3
+flatbuffers==25.2.10
+gast==0.6.0
+google-pasta==0.2.0
+grpcio==1.74.0
+h5py==3.14.0
+libclang==18.1.1
+ml-dtypes==0.3.2
+opt_einsum==3.4.0
+protobuf==4.25.8
+termcolor==3.1.0
+wrapt==1.14.2
+
+# Machine Learning
+scikit-learn==1.4.1.post1
+joblib==1.5.2
+
+# Jupyter ecosystem
+jupyter==1.1.1
+jupyterlab==4.4.7
+ipython==8.18.1
+ipykernel==6.30.1
+ipywidgets==8.1.7
+notebook==7.4.5
+jupyter_client==8.6.3
+jupyter_core==5.8.1
+jupyter_server==2.17.0
+
+# Plotting and visualization
+matplotlib-inline==0.1.7
+pillow==11.3.0
+
+# Utilities
+pyyaml==6.0.2
+packaging==25.0
+six==1.17.0
+typing_extensions==4.15.0
+requests==2.32.5
+certifi==2025.8.3
+
+# Development tools
+cython==3.1.3
+black==23.12.1
+pytest==7.4.4
