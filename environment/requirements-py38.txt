@@ -3,15 +3,15 @@
 # Optimized for Python 3.8.11
 
 # Core numerical libraries (Python 3.8 compatible)
-numpy==1.24.4
+numpy==1.24.3
 scipy==1.10.1
 matplotlib==3.7.5
 sympy==1.12
 
 # TensorFlow ecosystem (Python 3.8 compatible)
+# Note: TensorFlow 2.13.1 bundles Keras 2.13 - no separate keras package needed
 tensorflow==2.13.1
 tensorboard==2.13.0
-keras==2.13.1
 
 # TensorFlow dependencies
 absl-py==1.4.0
