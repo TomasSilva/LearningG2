@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from itertools import product, permutations
 from geometry.compression import vec_to_form
-from geometry.wedge_product import wedge_product
+from geometry.wedge import wedge
 
 ###########################################################################
 # Functions related to the CY-structure
@@ -132,7 +132,7 @@ def compute_gG2(G2_val):
     for i in range(7):
         for j in range(7):
             if i <= j:  # avoid double counting by only computing upper triangle       
-                B[i,j] = wedge_product(G2_val[i,:,:], wedge_product(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
+                B[i,j] = wedge(G2_val[i,:,:], wedge(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
     # Make B symmetric
     B = B + B.T - np.diag(B.diagonal())             
     detB = np.linalg.det(B)
