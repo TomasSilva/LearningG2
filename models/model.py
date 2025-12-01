@@ -2,6 +2,86 @@
 # Import libraries
 import tensorflow as tf
 from math import comb
+from packaging import version
+
+###########################################################################
+### Model I/O Compatibility for Different TensorFlow Versions ###
+
+# Determine the appropriate model file extension based on TensorFlow version
+TF_VERSION = version.parse(tf.__version__)
+KERAS_FORMAT_SUPPORTED = TF_VERSION >= version.parse("2.15.0")
+MODEL_EXTENSION = ".keras" if KERAS_FORMAT_SUPPORTED else ".h5"
+
+
+def get_model_path(base_path):
+    """
+    Convert a model path to use the appropriate extension for the current TensorFlow version.
+    
+    Parameters:
+    -----------
+    base_path : str
+        Path with .keras extension or no extension
+        
+    Returns:
+    --------
+    str
+        Path with appropriate extension (.keras for TF 2.15+, .h5 for older)
+    """
+    # Remove any existing extension
+    if base_path.endswith('.keras'):
+        base_path = base_path[:-6]
+    elif base_path.endswith('.h5'):
+        base_path = base_path[:-3]
+    
+    return base_path + MODEL_EXTENSION
+
+
+def save_model(model, filepath, **kwargs):
+    """
+    Save model with appropriate format for current TensorFlow version.
+    
+    Parameters:
+    -----------
+    model : tf.keras.Model
+        Model to save
+    filepath : str
+        Path to save model (with or without extension)
+    **kwargs
+        Additional arguments passed to model.save()
+        
+    Returns:
+    --------
+    str
+        Actual filepath used (with correct extension)
+    """
+    filepath = get_model_path(filepath)
+    model.save(filepath, **kwargs)
+    return filepath
+
+
+def load_model(filepath, custom_objects=None, **kwargs):
+    """
+    Load model with appropriate format for current TensorFlow version.
+    
+    Parameters:
+    -----------
+    filepath : str
+        Path to model file (with or without extension)
+    custom_objects : dict, optional
+        Custom objects needed for loading
+    **kwargs
+        Additional arguments passed to tf.keras.models.load_model()
+        
+    Returns:
+    --------
+    tf.keras.Model
+        Loaded model
+    """
+    filepath = get_model_path(filepath)
+    return tf.keras.models.load_model(filepath, custom_objects=custom_objects, **kwargs)
+
+###########################################################################
+### Custom Initializers and Layers ###
 
 
 class ScaledGlorotUniform(tf.keras.initializers.GlorotUniform):

@@ -25,6 +25,7 @@ if hasattr(cymetric, 'cymetric'):
 from geometry.geometry import hermitian_to_kahler_real, holomorphic_volume_form_to_real, compute_gG2
 from geometry.patches import CoordChange_C5R10
 from geometry.wedge_product import wedge_product
+from models.model import get_model_path
 
 # Import cymetric functions
 from cymetric.pointgen.pointgen import PointGenerator
@@ -53,7 +54,8 @@ class LinkSample:
         self.cymodel_name = cymodel_name
         self.dirname = os.path.dirname(os.path.dirname(__file__)) + '/models/cy_models/link_data'
         self.config_path = os.path.dirname(os.path.dirname(__file__)) + f'/models/cy_models/cy_model_config{cymodel_name}.yaml'
-        self.cymodel_path = os.path.dirname(os.path.dirname(__file__)) + f'/models/cy_models/cy_metric_model{cymodel_name}.keras'
+        cymodel_base = os.path.dirname(os.path.dirname(__file__)) + f'/models/cy_models/cy_metric_model{cymodel_name}'
+        self.cymodel_path = get_model_path(cymodel_base + '.keras')
         
         # Run the data generation
         self._load_config()

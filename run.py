@@ -9,7 +9,8 @@ import tensorflow as tf
 # Import functions
 from models.model import (
     GlobalModel, TrainingModel, NormalisationLayer, 
-    DenormalisationLayer, NormalisedModel, ScaledGlorotUniform
+    DenormalisationLayer, NormalisedModel, ScaledGlorotUniform,
+    save_model, load_model, get_model_path
 )
 from sampling.sampling import LinkSample
 from geometry.compression import form_to_vec, metric_to_vec
@@ -122,7 +123,7 @@ def main(hyperparameters_file):
         }
         
         try:
-            global_model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
+            global_model = load_model(model_path, custom_objects=custom_objects)
             print("  ✓ Model loaded (normalisation layers preserved)")
             normalisers_already_fitted = True
         except Exception as e:
@@ -272,6 +273,6 @@ if __name__ == "__main__":
             
         # Save the full external model (includes normalisation layers)
         save_path = logging_path+f'global_model_{save_flag}.keras'
-        global_model.save(save_path)
+        save_path = save_model(global_model, save_path)
         print(f'▸ Model saved: {save_path}')
     
