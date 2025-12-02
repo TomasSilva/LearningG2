@@ -6,6 +6,7 @@ import os
 import sys
 import yaml
 import pickle as pickle
+import itertools
 
 # Setup path for cymetric package
 import pathlib
@@ -24,13 +25,13 @@ if hasattr(cymetric, 'cymetric'):
 # Import functions
 from geometry.geometry import hermitian_to_kahler_real, holomorphic_volume_form_to_real, compute_gG2
 from geometry.patches import CoordChange_C5R10
-from geometry.wedge_product import wedge_product
+from geometry.wedge import wedge
 from models.model import get_model_path
 
 # Import cymetric functions
 from cymetric.pointgen.pointgen import PointGenerator
-from cymetric.models.tfhelper import prepare_tf_basis
-from cymetric.models.tfmodels import PhiFSModel
+from cymetric.models.helper import prepare_basis
+from cymetric.models.models import MultFSModel
 
 ###########################################################################
 # Class of the generated Link data (i.e. ambient pt coordinates, the G2 3-form, etc)
@@ -79,7 +80,7 @@ class LinkSample:
             self.points = data['X_train']
             self.cy_points_C5 = CoordChange_C5R10(self.points, inverse=True)
             BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
-            self.BASIS = prepare_tf_basis(BASIS)
+            self.BASIS = prepare_basis(BASIS)
             
             # Identify coordinates dropped in the patching
             self.one_idxs = np.argmax(np.isclose(self.cy_points_C5, complex(1, 0)), axis=1)
@@ -134,7 +135,7 @@ class LinkSample:
             
             # Load basis (already prepared in first iteration)
             BASIS = np.load(os.path.join(self.dirname, 'basis.pickle'), allow_pickle=True)
-            self.BASIS = prepare_tf_basis(BASIS)
+            self.BASIS = prepare_basis(BASIS)
         
         # Generate the link points in the local \mathbb{R}^7 coordinate system
         self.thetas = np.random.uniform(low=0., high=2*np.pi, size=self.cy_points_C5.shape[0]) #...sample a random angle
@@ -146,28 +147,63 @@ class LinkSample:
         self.link_points_local = np.concatenate((np.real(c3_coords), np.imag(c3_coords), self.thetas.reshape(-1, 1)), axis=1) 
 
     def _prepare_cymodel(self):
-        nn_phi = tf.keras.Sequential()
-        nn_phi.add(tf.keras.Input(shape=(self.config['n_in'],)))
-        for _ in range(self.config['nlayer']):
-            nn_phi.add(tf.keras.layers.Dense(self.config['nHidden'], activation=self.config['act']))
-        nn_phi.add(tf.keras.layers.Dense(self.config['n_out'], use_bias=False))
+        nn = tf.keras.Sequential()
+        nn.add(tf.keras.Input(shape=(self.config['n_in'],)))
+        for i in range(self.config['nlayer']):
+            nn.add(tf.keras.layers.Dense(self.config['nHidden'], activation=self.config['act']))
+        nn.add(tf.keras.layers.Dense(self.config['n_out'], use_bias=False))
+        loaded_nn = tf.keras.models.load_model(self.cymodel_path)
+        self.cymetric_model = MultFSModel(loaded_nn, self.BASIS, alpha=self.config['alpha'])
 
-        self.cymetric_model = PhiFSModel(nn_phi, self.BASIS, alpha=self.config['alpha'])
-        self.cymetric_model.nn_phi = tf.keras.models.load_model(self.cymodel_path)
+        # nn_phi = tf.keras.Sequential()
+        # nn_phi.add(tf.keras.Input(shape=(self.config['n_in'],)))
+        # for _ in range(self.config['nlayer']):
+        #     nn_phi.add(tf.keras.layers.Dense(self.config['nHidden'], activation=self.config['act']))
+        # nn_phi.add(tf.keras.layers.Dense(self.config['n_out'], use_bias=False))
+
+        # self.cymetric_model = MultFSModel(nn_phi, self.BASIS, alpha=self.config['alpha'])
+        # self.cymetric_model.nn_phi = tf.keras.models.load_model(self.cymodel_path)
 
     def _compute_geometry(self):
         self.holomorphic_volume_form = self.pg.holomorphic_volume_form(self.cy_points_C5)
-        hvf_r, hvf_i = holomorphic_volume_form_to_real(self.holomorphic_volume_form)
+        hvf_r = []
+        hvf_i = []
 
-        hermitian_metric = self.cymetric_model(CoordChange_C5R10(self.cy_points_C5)).numpy()
+        for c in self.holomorphic_volume_form:
+            ReOmega, ImOmega = holomorphic_volume_real_imag(c)
+            hvf_r.append(ReOmega)
+            hvf_i.append(ImOmega)
+        hvf_r = np.array(hvf_r)
+        hvf_i = np.array(hvf_i)
+
+        hvf_r = np.pad(hvf_r, pad_width=((0,0), (0,1), (0,1), (0,1)), mode='constant',constant_values=0)
+        hvf_i = np.pad(hvf_i, pad_width=((0,0), (0,1), (0,1), (0,1)), mode='constant',constant_values=0)
+
+        self.hermitian_metric = self.cymetric_model(CoordChange_C5R10(self.cy_points_C5)).numpy()
         # Force hermitian symmetrization to handle GPU numerical precision
-        hermitian_metric = 0.5 * (hermitian_metric + hermitian_metric.conj().transpose(0, 2, 1))
-        kahler_form_R6 = hermitian_to_kahler_real(hermitian_metric)
-        self.kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
+        self.hermitian_metric = 0.5 * (self.hermitian_metric + self.hermitian_metric.conj().transpose(0, 2, 1))
+        self.kahler_form_R6 = np.array([kahler_form_real_matrix(self.hermitian_metric[i]) for i in range(len(self.hermitian_metric))])
+        self.kahler_form_R7 = np.pad(self.kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
 
+        # TODO: This should change to the non-trivial fibration case later
         self.dthetas = np.concatenate((np.zeros((self.cy_points_C5.shape[0], 6)), np.ones((self.cy_points_C5.shape[0], 1))), axis=1)
-        self.g2form_R7 = np.array([wedge_product(self.kahler_form_R7[i], self.dthetas[i]) for i in range(self.cy_points_C5.shape[0])])
-        self.g2form_R7[:, :6, :6, :6] += hvf_r
+
+        self.g2form_R7 = np.array([wedge(self.kahler_form_R7[i], self.dthetas[i]) + hvf_r[i] for i in range(len(self.kahler_form_R7))])
+
+        self.star_g2form_R7 = np.array([(1/2)*wedge(self.kahler_form_R7[i], self.kahler_form_R7[i]) + wedge(self.dthetas[i], hvf_i[i]) for i in range(len(self.kahler_form_R7))])
+        
+        # self.holomorphic_volume_form = self.pg.holomorphic_volume_form(self.cy_points_C5)
+        # hvf_r, hvf_i = holomorphic_volume_form_to_real(self.holomorphic_volume_form)
+
+        # self.hermitian_metric = self.cymetric_model(CoordChange_C5R10(self.cy_points_C5)).numpy()
+        # # Force hermitian symmetrization to handle GPU numerical precision
+        # self.hermitian_metric = 0.5 * (self.hermitian_metric + self.hermitian_metric.conj().transpose(0, 2, 1))
+        # kahler_form_R6 = hermitian_to_kahler_real(self.hermitian_metric)
+        # self.kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
+
+        # self.dthetas = np.concatenate((np.zeros((self.cy_points_C5.shape[0], 6)), np.ones((self.cy_points_C5.shape[0], 1))), axis=1)
+        # self.g2form_R7 = np.array([wedge(self.kahler_form_R7[i], self.dthetas[i]) for i in range(self.cy_points_C5.shape[0])])
+        # self.g2form_R7[:, :6, :6, :6] += hvf_r
 
     def link_points(self, local=True):
         if local:
@@ -193,28 +229,84 @@ class LinkSample:
             self._g2_metric = np.array([compute_gG2(g2) for g2 in self.g2form_R7])
         return self._g2_metric
 
-    
+def levi_civita_6():
+    """Return ε_{abcdef} for dimension 6 as an int8 array of shape (6,6,6,6,6,6)."""
+    eps = np.zeros((6, 6, 6, 6, 6, 6), dtype=np.int8)
 
-###########################################################################
-if __name__ == '__main__':
-    
-    # Generate a link data sample
-    n_pts = int(1e1)
-    link_dataset = LinkSample(n_pts=n_pts)
-    link_coords = link_dataset.link_points()
-    g2_form = link_dataset.g2_form
-    #g2_metric = link_dataset.g2_metric
-    #kahler_form = link_dataset.kahler_form
-    
-    print(f'Link pts shape:     {link_coords.shape}\nLink 3-forms shape: {g2_form.shape}')
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    def sign_of_perm(p):
+        inv = 0
+        for i in range(len(p)):
+            for j in range(i + 1, len(p)):
+                if p[i] > p[j]:
+                    inv += 1
+        return 1 if (inv % 2 == 0) else -1
 
+    for p in itertools.permutations(range(6)):
+        eps[p] = sign_of_perm(p)
+
+    return eps
+
+def holomorphic_volume_real_imag(c):
+    """
+    Given a complex scalar c (np.complex128) such that
+    Omega = c * dz1 ∧ dz2 ∧ dz3 with z_i = x_i + i y_i,
+    return (ReOmega, ImOmega) as real (6,6,6) tensors in the basis
+    (x1, x2, x3, y1, y2, y3).
+    """
+    # basis order: 0:x1, 1:x2, 2:x3, 3:y1, 4:y2, 5:y3
+    dz1 = np.zeros(6, dtype=np.complex128)
+    dz2 = np.zeros(6, dtype=np.complex128)
+    dz3 = np.zeros(6, dtype=np.complex128)
+
+    # dz1 = dx1 + i dy1
+    dz1[0] = 1.0
+    dz1[3] = 1.0j
+
+    # dz2 = dx2 + i dy2
+    dz2[1] = 1.0
+    dz2[4] = 1.0j
+
+    # dz3 = dx3 + i dy3
+    dz3[2] = 1.0
+    dz3[5] = 1.0j
+
+    eps6 = levi_civita_6()
+
+    # Omega_{def} = c * ε_{abcdef} dz1_a dz2_b dz3_c
+    Omega = c * np.einsum("abcdef,a,b,c->def", eps6, dz1, dz2, dz3)
+
+    ReOmega = np.real(Omega)
+    ImOmega = np.imag(Omega)
+
+    return ReOmega, ImOmega
+
+def kahler_form_real_matrix(g):
+    """
+    g: (n, n) complex Hermitian matrix g_{j \bar{k}}
+    returns: (2n, 2n) real antisymmetric matrix W
+             representing the Kähler form ω in the basis
+             (x1,...,xn,y1,...,yn)
+    """
+    n = g.shape[0]
+    W = np.zeros((2*n, 2*n), dtype=float)
+
+    for j in range(n):
+        for k in range(n):
+            a = g[j, k].real  # Re g_{j\bar{k}}
+            b = g[j, k].imag  # Im g_{j\bar{k}}
+            xj, yj = 2*j, 2*j + 1
+            xk, yk = 2*k, 2*k + 1
+
+            # Terms with Re(g): a (dx^j∧dy^k - dy^j∧dx^k)
+            W[xj, yk] += a
+            W[yk, xj] -= a
+            W[yj, xk] -= a
+            W[xk, yj] += a
+
+            # Terms with Im(g): -b (dx^j∧dx^k + dy^j∧dy^k)
+            W[xj, xk] += -b
+            W[xk, xj] -= -b
+            W[yj, yk] += -b
+            W[yk, yj] -= -b
+
+    return W
