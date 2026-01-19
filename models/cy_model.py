@@ -17,16 +17,19 @@ if str(_cymetric_dir) not in sys.path:
     sys.path.insert(0, str(_cymetric_dir))
 
 # Create alias to fix cymetric internal imports
-import cymetric
-if hasattr(cymetric, 'cymetric'):
-    sys.modules['cymetric'] = cymetric.cymetric
+# import cymetric
+# if hasattr(cymetric, 'cymetric'):
+#     sys.modules['cymetric'] = cymetric.cymetric
 
 # Import cymetric functions
 from cymetric.pointgen.pointgen import PointGenerator
-from cymetric.models.callbacks import SigmaCallback
-from cymetric.models.tfmodels import PhiFSModel
-from cymetric.models.metrics import SigmaLoss
-from cymetric.models.tfhelper import prepare_tf_basis, train_model
+# from cymetric.models.callbacks import SigmaCallback
+# from cymetric.models.tfmodels import PhiFSModel
+from cymetric.models.callbacks import RicciCallback, SigmaCallback, VolkCallback, KaehlerCallback, TransitionCallback
+from cymetric.models.models import MultFSModel
+# from cymetric.models.metrics import SigmaLoss
+# from cymetric.models.tfhelper import prepare_tf_basis, train_model
+from cymetric.models.helper import prepare_basis, train_model
 
 ###########################################################################
 if __name__ == '__main__':
@@ -41,7 +44,7 @@ if __name__ == '__main__':
     
     # Save the training data
     dirname = os.path.dirname(__file__)+'/cy_models/train_data'
-    n_p = 200000
+    n_p = 100000
     kappa = pg.prepare_dataset(n_p, dirname)
     data = np.load(os.path.join(dirname, 'dataset.npz'))
     pg.prepare_basis(dirname, kappa=kappa)
@@ -49,46 +52,44 @@ if __name__ == '__main__':
     # Load the training data
     data = np.load(os.path.join(dirname, 'dataset.npz'))
     BASIS = np.load(os.path.join(dirname, 'basis.pickle'), allow_pickle=True)
-    BASIS = prepare_tf_basis(BASIS)
+    BASIS = prepare_basis(BASIS)
     
-    # Define the cymetric NN hyperparameters
-    nfold = 3
-    alpha = [1., 1., 1., 1., 1.]
-    n_in = 2*5
-    n_out = 1
+    rcb = RicciCallback((data['X_val'], data['y_val']), data['val_pullbacks'])
+    scb = SigmaCallback((data['X_val'], data['y_val']))
+    volkcb = VolkCallback((data['X_val'], data['y_val']))
+    kcb = KaehlerCallback((data['X_val'], data['y_val']))
+    tcb = TransitionCallback((data['X_val'], data['y_val']))
+    cb_list = [rcb, scb, kcb, tcb, volkcb]
+    
     nlayer = 3
     nHidden = 64
     act = 'gelu'
-    nEpochs = 200
+    nEpochs = 500
     bSizes = [64, 50000]
-
-    # Define the cymetric NN model (learnt via the Kahler potential)
-    nn_phi = tf.keras.Sequential()
-    nn_phi.add(tf.keras.Input(shape=(n_in,)))
-    for i in range(nlayer):
-        nn_phi.add(tf.keras.layers.Dense(nHidden, activation=act))
-    nn_phi.add(tf.keras.layers.Dense(n_out, use_bias=False))
-    phimodel = PhiFSModel(nn_phi, BASIS, alpha=alpha)
-    opt_phi = tf.keras.optimizers.Adam()
-    scb = SigmaCallback((data['X_val'], data['y_val']))
-    cb_list = [scb]
-    cmetrics = [SigmaLoss()]
+    alpha = [1., 1., 1., 1., 1.]
+    nfold = 3
+    n_in = 2*5
+    n_out = nfold**2
     
-    # Train the model
-    phimodel, training_history = train_model(phimodel, 
-                                             data, 
-                                             optimizer=opt_phi, 
-                                             epochs=nEpochs, 
-                                             batch_sizes=bSizes, 
-                                             verbose=1, 
-                                             custom_metrics=cmetrics, 
-                                             callbacks=cb_list
-                                             )
+    nn = tf.keras.Sequential()
+    nn.add(tf.keras.Input(shape=(n_in,)))
+    for i in range(nlayer):
+        nn.add(tf.keras.layers.Dense(nHidden, activation=act))
+    nn.add(tf.keras.layers.Dense(n_out, use_bias=False))
+    
+    fmodel = MultFSModel(nn, BASIS, alpha=alpha)
+    
+    opt = tf.keras.optimizers.Adam()
+    
+    fmodel, training_history = train_model(fmodel, data, optimizer=opt, epochs=nEpochs, batch_sizes=bSizes, verbose=1, callbacks=cb_list)
+        
+   
     
     # Save the trained model
     save_filepath = os.path.dirname(__file__)+'/cy_models/'
-    cymodel_name = '_test'
-    phimodel.save(save_filepath+'cy_metric_model'+cymodel_name+'.keras')
+    # cymodel_name = '_test'
+    cymodel_name = ''
+    fmodel.save(save_filepath+'cy_metric_model'+cymodel_name+'.keras')
     
     # Save the cymetric hyperparameters
     config = {

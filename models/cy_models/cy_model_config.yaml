@@ -5,7 +5,7 @@ alpha:
 - 1.0
 - 1.0
 - 1.0
-ambient: !!python/object/apply:numpy.core.multiarray._reconstruct
+ambient: !!python/object/apply:numpy._core.multiarray._reconstruct
   args:
   - &id001 !!python/name:numpy.ndarray ''
   - !!python/tuple
@@ -33,7 +33,7 @@ ambient: !!python/object/apply:numpy.core.multiarray._reconstruct
   - false
   - !!binary |
     BAAAAAAAAAA=
-coefficients: !!python/object/apply:numpy.core.multiarray._reconstruct
+coefficients: !!python/object/apply:numpy._core.multiarray._reconstruct
   args:
   - *id001
   - !!python/tuple
@@ -61,7 +61,7 @@ coefficients: !!python/object/apply:numpy.core.multiarray._reconstruct
   - false
   - !!binary |
     AAAAAAAA8D8AAAAAAADwPwAAAAAAAPA/AAAAAAAA8D8AAAAAAADwPw==
-kmoduli: !!python/object/apply:numpy.core.multiarray._reconstruct
+kmoduli: !!python/object/apply:numpy._core.multiarray._reconstruct
   args:
   - *id001
   - !!python/tuple
@@ -76,7 +76,7 @@ kmoduli: !!python/object/apply:numpy.core.multiarray._reconstruct
   - false
   - !!binary |
     AAAAAAAA8D8=
-monomials: !!python/object/apply:numpy.core.multiarray._reconstruct
+monomials: !!python/object/apply:numpy._core.multiarray._reconstruct
   args:
   - *id001
   - !!python/tuple
@@ -97,5 +97,5 @@ monomials: !!python/object/apply:numpy.core.multiarray._reconstruct
     AAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAAAAAAAA=
 nHidden: 64
 n_in: 10
-n_out: 1
+n_out: 9
 nlayer: 3
