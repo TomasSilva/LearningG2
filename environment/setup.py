@@ -1,16 +1,12 @@
-# setup.py
-from setuptools import setup, Extension
-from Cython.Build import cythonize
-import numpy as np
+from setuptools import setup, find_packages
 
-extensions = [
-    Extension(
-        name="geometry.wedge_product",                   # <-- Explicit module name!
-        sources=["geometry/wedge_product.pyx"],          # <-- File path
-        include_dirs=[np.get_include()],
-    )
-]
+def read_requirements():
+    with open("./requirements.txt") as f:
+        return f.read().splitlines()
 
 setup(
-    ext_modules=cythonize(extensions, compiler_directives={"language_level": "3"}),
+    name="LearningG2",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=read_requirements(),
 )

@@ -1,197 +1,172 @@
 '''Geometric functions'''
 # Import libraries
 import numpy as np
+import itertools
 import tensorflow as tf
 from itertools import product, permutations
 from geometry.compression import vec_to_form
-from geometry.wedge_product import wedge_product
+from geometry.wedge import wedge
+from functools import lru_cache
 
-###########################################################################
-# Functions related to the CY-structure
-def hermitian_to_riemannian_real(H_batch):
+
+def riemannian_metric_real_matrix(g):
     """
-    Vectorized conversion of a batch of 3x3 Hermitian matrices to 6x6 real symmetric matrices.
-    Real coordinates arranged: (x1, x2, ..., y1, y2, ...).
-    
-    Args:
-        H_batch (np.ndarray): Array of shape (batch_size, 3, 3) with complex Hermitian matrices.
+    g: (n, n) complex Hermitian matrix g_{j \bar{k}}
+    returns: (2n, 2n) real symmetric matrix G representing the
+             Riemannian metric in the basis (x1,...,xn,y1,...,yn),
+             where z^j = x^j + i y^j.
 
-    Returns:
-        G_batch (np.ndarray): Array of shape (batch_size, 6, 6) with real symmetric matrices.
+    Convention: ds^2 = 2 * sum_{j,k} g_{j\bar k} dz^j d\bar z^k
+                (common in Kähler geometry). With this convention,
+                G is exactly the real metric on (x,y).
     """
-    if H_batch.shape[-2:] != (3, 3):
-        raise ValueError("Each matrix must be 3x3.")
-    
-    # Hermitian check disabled - forced symmetrization in sampling.py guarantees hermiticity
-    # H_conj_T = H_batch.conj().transpose(0, 2, 1)
-    # if not np.allclose(H_batch, H_conj_T, rtol=1e-4, atol=1e-6):
-    #     # Compute actual error for debugging
-    #     diff = np.abs(H_batch - H_conj_T)
-    #     max_error = np.max(diff)
-    #     mean_error = np.mean(diff)
-    #     raise ValueError(f"All input matrices must be Hermitian. Max error: {max_error:.2e}, Mean error: {mean_error:.2e}")
+    g = np.asarray(g)
+    n = g.shape[0]
+    A = np.real(g)
+    B = np.imag(g)
 
-    A = H_batch.real  # shape: (batch_size, 3, 3)
-    B = H_batch.imag  # shape: (batch_size, 3, 3)
+    G = np.zeros((2*n, 2*n), dtype=float)
 
-    upper = np.concatenate((A, -B), axis=2)  # shape: (batch_size, 3, 6)
-    lower = np.concatenate((B,  A), axis=2)  # shape: (batch_size, 3, 6)
-    G_batch = np.concatenate((upper, lower), axis=1)  # shape: (batch_size, 6, 6)
+    # Block form in (x..., y...) order:
+    # G_xx = A,  G_xy = -B
+    # G_yx = B,  G_yy = A
+    G[:n, :n] = A
+    G[:n, n:] = -B
+    G[n:, :n] = B
+    G[n:, n:] = A
 
-    return G_batch
+    # numerical hygiene: force symmetry
+    G = 0.5 * (G + G.T)
+    return G
 
-
-def hermitian_to_kahler_real(H_batch):
+def kahler_form_real_matrix(g, half=False):
     """
-    Vectorized Kähler form computation for a batch of 3x3 Hermitian matrices.
-    Real coordinates arranged: (x1, x2, ..., y1, y2, ...).
-    
-    Args:
-        H_batch (np.ndarray): Array of shape (batch_size, 3, 3), complex Hermitian matrices.
-
-    Returns:
-        omega_batch (np.ndarray): Array of shape (batch_size, 6, 6), real antisymmetric matrices.
+    g: (n, n) complex Hermitian matrix g_{j \bar{k}}
+    returns: (2n, 2n) real antisymmetric matrix W for ω
+             in the basis (x1,...,xn,y1,...,yn)
+    Convention: ω = i * sum g_{j\bar k} dz^j ∧ d\bar z^k
+                (set half=True for ω = (i/2) ... )
     """
-    if H_batch.shape[-2:] != (3, 3):
-        raise ValueError("Each input matrix must be 3x3.")
+    n = g.shape[0]
+    W = np.zeros((2*n, 2*n), dtype=float)
 
-    # Hermitian check disabled - forced symmetrization in sampling.py guarantees hermiticity
-    # H_conj_T = H_batch.conj().transpose(0, 2, 1)
-    # if not np.allclose(H_batch, H_conj_T, rtol=1e-4, atol=1e-6):
-    #     # Compute actual error for debugging
-    #     diff = np.abs(H_batch - H_conj_T)
-    #     max_error = np.max(diff)
-    #     mean_error = np.mean(diff)
-    #     raise ValueError(f"All matrices must be Hermitian. Max error: {max_error:.2e}, Mean error: {mean_error:.2e}")
+    for j in range(n):
+        for k in range(n):
+            a = g[j, k].real
+            b = g[j, k].imag
+            xj, yj = j, n + j
+            xk, yk = k, n + k
 
-    A = H_batch.imag  # shape: (batch_size, 3, 3)
-    zero = np.zeros_like(A)
+            # Re(g): a (dx^j∧dy^k - dy^j∧dx^k)
+            W[xj, yk] += a
+            W[yk, xj] -= a
+            W[yj, xk] -= a
+            W[xk, yj] += a
 
-    # Assemble block antisymmetric matrix:
-    # [[ 0,  A ],
-    #  [ -A.T, 0 ]]
-    upper = np.concatenate((zero, A), axis=2)          # shape: (batch_size, 3, 6)
-    lower = np.concatenate((-A.transpose(0, 2, 1), zero), axis=2)  # shape: (batch_size, 3, 6)
-    omega = np.concatenate((upper, lower), axis=1)     # shape: (batch_size, 6, 6)
+            # Im(g): -b (dx^j∧dx^k + dy^j∧dy^k)
+            W[xj, xk] += -b
+            W[xk, xj] -= -b
+            W[yj, yk] += -b
+            W[yk, yj] -= -b
 
-    return omega
+    if half:
+        W *= 0.5
 
+    # optional numerical hygiene:
+    W = 0.5 * (W - W.T)
 
-def holomorphic_volume_form_to_real(c_batch):
+    return W
+
+def holomorphic_volume_real_imag(c):
     """
-    Convert a complex coefficient c of dz^1 ^ dz^2 ^ dz^3 into a real 6x6x6 tensor 
-    representing the real coordinate expression of the holomorphic volume form.
+    Omega = c * dz1 ∧ dz2 ∧ dz3, with z_i = x_i + i y_i.
+    Returns ReOmega, ImOmega as real (6,6,6) arrays in basis
+    (x1, x2, x3, y1, y2, y3).
 
-    Args:
-        c_batch (np.ndarray): shape (batch,), complex dtype.
-
-    Returns:
-        Omega_real (np.ndarray): shape (batch, 6, 6, 6), real part of 3-form
-        Omega_imag (np.ndarray): shape (batch, 6, 6, 6), imaginary part of 3-form
+    Convention: Omega = (1/3!) * Omega_{ijk} e^i∧e^j∧e^k
+    so Omega_{ijk} is fully antisymmetric.
     """
-    batch_size = c_batch.shape[0]
-    Omega_real = np.zeros((batch_size, 6, 6, 6))
-    Omega_imag = np.zeros((batch_size, 6, 6, 6))
+    dz1 = np.zeros(6, dtype=np.complex128)
+    dz2 = np.zeros(6, dtype=np.complex128)
+    dz3 = np.zeros(6, dtype=np.complex128)
 
-    dx = [0, 1, 2]
-    dy = [3, 4, 5]
-    index_triplets = list(permutations(dx, 3))
+    dz1[0] = 1.0; dz1[3] = 1.0j  # dx1 + i dy1
+    dz2[1] = 1.0; dz2[4] = 1.0j  # dx2 + i dy2
+    dz3[2] = 1.0; dz3[5] = 1.0j  # dx3 + i dy3
 
-    # Only one unique permutation set (since all permutations are included later)
-    for (i, j, k) in index_triplets:
-        iy, jy, ky = dy[i], dy[j], dy[k]
-        for a, b, d in product([0, 1], repeat=3):
-            idx = [i, j, k]
-            idx[0] = [i, iy][a]
-            idx[1] = [j, jy][b]
-            idx[2] = [k, ky][d]
+    T = np.einsum("i,j,k->ijk", dz1, dz2, dz3)
 
-            coeff = ((1j) ** (a + b + d)) * c_batch[:, None] / 6  # shape: (batch, 1)
-            for perm in set(permutations(idx)):
-                # Determine the sign of the permutation
-                sign = (
-                    1 if list(perm) == sorted(perm) else
-                    (-1) ** sum(p1 > p2 for p1, p2 in zip(perm, sorted(perm)))
-                )
-                Omega_real[:, perm[0], perm[1], perm[2]] += coeff.real[:, 0] * sign
-                Omega_imag[:, perm[0], perm[1], perm[2]] += coeff.imag[:, 0] * sign
+    # 6 * antisymmetrization: sum_{σ∈S3} sgn(σ) T_{σ(i)σ(j)σ(k)}
+    Omega = c * (
+        T
+        + np.transpose(T, (1, 2, 0))
+        + np.transpose(T, (2, 0, 1))
+        - np.transpose(T, (0, 2, 1))
+        - np.transpose(T, (2, 1, 0))
+        - np.transpose(T, (1, 0, 2))
+    )
 
-    return Omega_real, Omega_imag
+    return Omega.real, Omega.imag
 
 
 ###########################################################################
 # Functions related to the G2-structure
-def compute_gG2(G2_val):
-    # TODO: this function must be vectorized!
-    # Note that wedge_product is very slow
-    """
-    Compute the gG2 metric from the G2 structure 3-form.
-    See: https://arxiv.org/pdf/math/0702077 EQ (2.3)
-    """
-    B = np.zeros((7, 7))
-    for i in range(7):
-        for j in range(7):
-            if i <= j:  # avoid double counting by only computing upper triangle       
-                B[i,j] = wedge_product(G2_val[i,:,:], wedge_product(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
-    # Make B symmetric
-    B = B + B.T - np.diag(B.diagonal())             
-    detB = np.linalg.det(B)
-    factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
-    gG2 = factor * B  
+# def compute_gG2(G2_val):
+#     # TODO: this function must be vectorized!
+#     # Note that wedge_product is very slow
+#     """
+#     Compute the gG2 metric from the G2 structure 3-form.
+#     See: https://arxiv.org/pdf/math/0702077 EQ (2.3)
+#     """
+#     B = np.zeros((7, 7))
+#     for i in range(7):
+#         for j in range(7):
+#             if i <= j:  # avoid double counting by only computing upper triangle       
+#                 B[i,j] = wedge(G2_val[i,:,:], wedge(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
+#     # Make B symmetric
+#     B = B + B.T - np.diag(B.diagonal())             
+#     detB = np.linalg.det(B)
+#     factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
+#     gG2 = factor * B  
     
-    return gG2
+#     return gG2
 
 
-###########################################################################
-# Functions for computing the exterior derivatives of the trained NN geometric functions
-def exterior_derivative(model, coords, patch_idxs, form_output=True):
-    """
-    Computes the exterior derivative (as a batched Jacobian) of a model's output 
-    with respect to its inputs, and optionally repackages it into a fully antisymmetric 
-    4-form tensor.
-
-    This function calculates ∂fᵢ/∂xⱼ for each output component of the model with respect 
-    to each input component using TensorFlow's batch Jacobian. If `form_output=True`, 
-    it interprets the Jacobian as a 3-form valued 1-form and repackages it into a 
-    fully antisymmetric tensor of shape (batch_size, 7, 7, 7, 7).
-
-    Args:
-        model (tf.keras.Model or callable): A model or function mapping inputs of shape 
-            (batch_size, input_dim) to outputs of shape (batch_size, output_dim).
-        inputs (tf.Tensor): A 2D tensor of shape (batch_size, input_dim), representing 
-            a batch of input vectors.
-        form_output (bool): If True, return the exterior derivative as an antisymmetric 
-            4-form of shape (batch_size, 7, 7, 7, 7). If False, return the raw Jacobian 
-            of shape (batch_size, output_dim, input_dim).
-
-    Returns:
-        tf.Tensor:
-            - If `form_output=True`: Tensor of shape (batch_size, 7, 7, 7, 7), representing 
-              the antisymmetric 4-form structure.
-            - If `form_output=False`: Tensor of shape (batch_size, output_dim, input_dim), 
-              the raw Jacobian.
-    """
-    coords = tf.convert_to_tensor(coords)
-
-    with tf.GradientTape() as tape:
-        tape.watch(coords)
-        outputs = model([coords, patch_idxs])
-
-    jacobians = tape.batch_jacobian(outputs, coords)  # Shape: (batch_size, output_dim, input_dim)
-    
-    # Repackage the data into the (batch, 7, 7, 7, 7) form
-    if form_output:
-        components = []
+@lru_cache(None)
+def levi_civita_7(dtype=np.float64):
+    eps = np.zeros((7,)*7, dtype=dtype)
+    for p in itertools.permutations(range(7)):
+        s = 1
         for i in range(7):
-            antisym_tensor = vec_to_form(jacobians[:, :, i], n=7, k=3)  # shape: (batch_size, 7, 7, 7)
-            components.append(antisym_tensor)  # 7 of these
-            
-        # Stack them along a new final axis
-        dg2_form = tf.stack(components, axis=-1)
-        
-        return dg2_form
-        
-    # Or just return the independent derivatives
-    else:
-        return jacobians
+            for j in range(i+1, 7):
+                if p[i] > p[j]:
+                    s *= -1
+        eps[p] = s
+    return eps
+
+def compute_gG2(phi, tol_eig=1e-12):
+    phi = np.asarray(phi, dtype=np.float64)
+    eps = levi_civita_7(phi.dtype)
+
+    # B_ij = (1/24) * phi_{i a b} phi_{j c d} phi_{e f g} eps^{a b c d e f g}
+    B = (1.0/24.0) * np.einsum('iab,jcd,efg,abcdefg->ij', phi, phi, phi, eps)
+    B = 0.5 * (B + B.T)
+
+    # Use slogdet (stable) + abs root like your original
+    sign, logdet = np.linalg.slogdet(B)
+    if sign == 0:
+        raise ValueError("B is singular (slogdet sign=0). φ likely degenerate / numerical issues.")
+    root = np.exp(logdet / 9.0)  # = |detB|^(1/9) up to sign tracked separately
+
+    factor = (6.0 ** (-2.0/9.0)) / root
+    g = factor * B
+    g = 0.5 * (g + g.T)
+
+    # Match your orientation-fix behavior
+    if np.linalg.eigvalsh(g).min() <= 0:
+        g = -g
+
+    return g
+
+
 

@@ -12,7 +12,7 @@ from models.model import (
     DenormalisationLayer, NormalisedModel, ScaledGlorotUniform,
     save_model, load_model, get_model_path
 )
-from sampling.sampling import LinkSample
+from sampling.sampling import LinkSample, load_g2_dataset
 from geometry.compression import form_to_vec, metric_to_vec
 # from geometry.patches import patch_indices_to_scalar  # DEPRECATED: now using separate embeddings
 from geometry.normalisation import Normaliser
@@ -61,11 +61,24 @@ def main(hyperparameters_file):
     # Get number of data resamples (default to 1 for backward compatibility)
     n_resamples = hp.get("n_data_resamples", 1)
     
+    # Get input mode (default to False for 7D + patches)
+    use_10d_input = hp.get("use_10d_input", False)
+    
     # Get target patch filter (default to None for all patches)
     target_patch = hp.get("target_patch", None)
     if target_patch is not None:
         target_patch = tuple(target_patch)  # Convert list to tuple
         print(f"▸ Target patch: [{target_patch[0]}, {target_patch[1]}]")
+    
+    # Check if using g2_dataset.npz or generating data on-the-fly
+    use_g2_dataset = hp.get("use_g2_dataset", True)  # Default to using g2_dataset.npz
+    if use_g2_dataset:
+        print(f"▸ Using pre-computed g2_dataset.npz")
+        print(f"▸ Input mode: {'10D ambient coordinates' if use_10d_input else '7D representation with patch indices'}")
+        if use_10d_input and target_patch is not None:
+            print("  Warning: target_patch filtering not applicable in 10D input mode")
+    else:
+        print(f"▸ Generating data on-the-fly with LinkSample")
     
     # Get zero component weight (default to 1.0 for standard loss)
     zero_weight = hp.get("zero_component_weight", 1.0)
@@ -143,18 +156,32 @@ def main(hyperparameters_file):
     ### Generate fixed validation set ###
     if hp["validate"]:
         print("  Generating fixed validation set...")
-        val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')
-        val_sample = tf.convert_to_tensor(val_dataset.link_points())
-        val_patch_indices = tf.stack([
-            tf.convert_to_tensor(val_dataset.one_idxs, dtype=tf.int32),
-            tf.convert_to_tensor(val_dataset.dropped_idxs, dtype=tf.int32)
-        ], axis=1)
-        if not hp["metric"]:
-            val_output = val_dataset.g2_form
-            val_output_vecs = form_to_vec(tf.convert_to_tensor(val_output))
+        
+        if use_g2_dataset:
+            # Load validation data from g2_dataset.npz
+            val_sample, val_patch_indices, val_output_vecs = load_g2_dataset(
+                n_samples=hp["num_val_samples"],
+                use_10d_input=use_10d_input,
+                metric=hp["metric"],
+                dataset_type='val'
+            )
+            val_sample = tf.convert_to_tensor(val_sample)
+            if not use_10d_input:
+                val_patch_indices = tf.convert_to_tensor(val_patch_indices)
         else:
-            val_output = val_dataset.g2_metric
-            val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
+            # Generate validation data on-the-fly with LinkSample
+            val_dataset = LinkSample(n_pts=hp["num_val_samples"], target_patch=target_patch, dataset_type='val')
+            val_sample = tf.convert_to_tensor(val_dataset.link_points())
+            val_patch_indices = tf.stack([
+                tf.convert_to_tensor(val_dataset.one_idxs, dtype=tf.int32),
+                tf.convert_to_tensor(val_dataset.dropped_idxs, dtype=tf.int32)
+            ], axis=1)
+            if not hp["metric"]:
+                val_output = val_dataset.g2_form
+                val_output_vecs = form_to_vec(tf.convert_to_tensor(val_output))
+            else:
+                val_output = val_dataset.g2_metric
+                val_output_vecs = metric_to_vec(tf.convert_to_tensor(val_output))
     
     ###########################################################################
     ### Data resampling loop ###
@@ -170,29 +197,48 @@ def main(hyperparameters_file):
             print(f"{'─'*80}")
         
         # Generate fresh training data
-        train_dataset = LinkSample(n_pts=hp["num_samples"], target_patch=target_patch, dataset_type='train')
-        train_sample = tf.convert_to_tensor(train_dataset.link_points())
-        # Stack patch indices into 2D vector [one_idx, dropped_idx]
-        train_patch_indices = tf.stack([
-            tf.convert_to_tensor(train_dataset.one_idxs, dtype=tf.int32),
-            tf.convert_to_tensor(train_dataset.dropped_idxs, dtype=tf.int32)
-        ], axis=1)
-        if not hp["metric"]:
-            train_output = train_dataset.g2_form
-            train_output_vecs = form_to_vec(tf.convert_to_tensor(train_output))
+        if use_g2_dataset:
+            # Load training data from g2_dataset.npz
+            train_sample, train_patch_indices, train_output_vecs = load_g2_dataset(
+                n_samples=hp["num_samples"],
+                use_10d_input=use_10d_input,
+                metric=hp["metric"],
+                dataset_type='train'
+            )
+            train_sample = tf.convert_to_tensor(train_sample)
+            if not use_10d_input:
+                train_patch_indices = tf.convert_to_tensor(train_patch_indices)
         else:
-            train_output = train_dataset.g2_metric
-            train_output_vecs = metric_to_vec(tf.convert_to_tensor(train_output))
+            # Generate training data on-the-fly with LinkSample
+            train_dataset = LinkSample(n_pts=hp["num_samples"], target_patch=target_patch, dataset_type='train')
+            train_sample = tf.convert_to_tensor(train_dataset.link_points())
+            # Stack patch indices into 2D vector [one_idx, dropped_idx]
+            train_patch_indices = tf.stack([
+                tf.convert_to_tensor(train_dataset.one_idxs, dtype=tf.int32),
+                tf.convert_to_tensor(train_dataset.dropped_idxs, dtype=tf.int32)
+            ], axis=1)
+            if not hp["metric"]:
+                train_output = train_dataset.g2_form
+                train_output_vecs = form_to_vec(tf.convert_to_tensor(train_output))
+            else:
+                train_output = train_dataset.g2_metric
+                train_output_vecs = metric_to_vec(tf.convert_to_tensor(train_output))
 
         # Fit normalisers on first iteration only (keep original statistics)
         if resample_idx == 0 and not normalisers_already_fitted:
             print("  Fitting normalisation layers...")
-            global_model.fit_normalisers(train_sample, train_output_vecs)
+            if use_10d_input:
+                global_model.fit_normalisers(train_sample, train_output_vecs)
+            else:
+                global_model.fit_normalisers(train_sample, train_output_vecs)
             
             # Normalize validation data once after normalisers are fitted
             if hp["validate"]:
                 val_output_vecs_normalised = global_model.normalise_targets(val_output_vecs)
-                val_data_normalised = ([val_sample, val_patch_indices], val_output_vecs_normalised)
+                if use_10d_input:
+                    val_data_normalised = (val_sample, val_output_vecs_normalised)
+                else:
+                    val_data_normalised = ([val_sample, val_patch_indices], val_output_vecs_normalised)
         
         # Set validation data (None if not validating)
         if not hp["validate"]:
@@ -202,15 +248,26 @@ def main(hyperparameters_file):
         if n_resamples > 1:
             print(f"  Training epochs {resample_idx * hp['epochs'] + 1}-{(resample_idx + 1) * hp['epochs']}...")
         
-        loss_hist = training_model.fit_with_normalised_targets(
-            [train_sample, train_patch_indices],
-            train_output_vecs,  
-            batch_size=hp["batch_size"],
-            epochs=hp["epochs"],
-            verbose=hp["verbosity"],
-            validation_data=val_data_normalised,
-            shuffle=True,
-        )
+        if use_10d_input:
+            loss_hist = training_model.fit_with_normalised_targets(
+                train_sample,
+                train_output_vecs,  
+                batch_size=hp["batch_size"],
+                epochs=hp["epochs"],
+                verbose=hp["verbosity"],
+                validation_data=val_data_normalised,
+                shuffle=True,
+            )
+        else:
+            loss_hist = training_model.fit_with_normalised_targets(
+                [train_sample, train_patch_indices],
+                train_output_vecs,  
+                batch_size=hp["batch_size"],
+                epochs=hp["epochs"],
+                verbose=hp["verbosity"],
+                validation_data=val_data_normalised,
+                shuffle=True,
+            )
         
         if n_resamples > 1:
             final_train_loss = loss_hist.history['loss'][-1]
@@ -258,6 +315,10 @@ if __name__ == "__main__":
     print("✓ Training complete!")
     print(f"{'='*80}\n")
     
+    # Load hyperparameters for model saving
+    with open(hyperparams_filepath, "r") as file:
+        hp = yaml.safe_load(file)
+    
     # Save the model
     if save == True:
         # If the runs folder for saving models doesn't exist, create it
@@ -266,10 +327,14 @@ if __name__ == "__main__":
             os.makedirs(logging_path)
             
         # Build the model explicitly to avoid saving warnings
-        # Use the same input shapes as training (2D patch indices vector)
-        dummy_coords = tf.zeros((1, 7), dtype=train_coords.dtype)
-        dummy_patch_indices = tf.zeros((1, 2), dtype=tf.int32)
-        global_model([dummy_coords, dummy_patch_indices])  # This builds the model
+        # Use the same input shapes as training
+        if hp.get("use_10d_input", False):
+            dummy_coords = tf.zeros((1, 10), dtype=train_coords.dtype)
+            global_model(dummy_coords)  # This builds the model
+        else:
+            dummy_coords = tf.zeros((1, 7), dtype=train_coords.dtype)
+            dummy_patch_indices = tf.zeros((1, 2), dtype=tf.int32)
+            global_model([dummy_coords, dummy_patch_indices])  # This builds the model
             
         # Save the full external model (includes normalisation layers)
         save_path = logging_path+f'global_model_{save_flag}.keras'

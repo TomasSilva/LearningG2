@@ -22,7 +22,7 @@ if hasattr(cymetric, 'cymetric'):
     sys.modules['cymetric'] = cymetric.cymetric
 
 # Import functions
-from geometry.geometry import hermitian_to_kahler_real, holomorphic_volume_form_to_real, compute_gG2
+from geometry.geometry import kahler_form_real_matrix, holomorphic_volume_real_imag, compute_gG2
 from geometry.patches import CoordChange_C5R10
 from geometry.wedge_product import wedge_product
 from models.model import get_model_path
@@ -157,12 +157,22 @@ class LinkSample:
 
     def _compute_geometry(self):
         self.holomorphic_volume_form = self.pg.holomorphic_volume_form(self.cy_points_C5)
-        hvf_r, hvf_i = holomorphic_volume_form_to_real(self.holomorphic_volume_form)
+        # New function takes single complex number, so we need to loop for batch
+        hvf_r_list = []
+        hvf_i_list = []
+        for hvf in self.holomorphic_volume_form:
+            hvf_r_single, hvf_i_single = holomorphic_volume_real_imag(hvf)
+            hvf_r_list.append(hvf_r_single)
+            hvf_i_list.append(hvf_i_single)
+        hvf_r = np.array(hvf_r_list)
+        hvf_i = np.array(hvf_i_list)
 
         hermitian_metric = self.cymetric_model(CoordChange_C5R10(self.cy_points_C5)).numpy()
         # Force hermitian symmetrization to handle GPU numerical precision
         hermitian_metric = 0.5 * (hermitian_metric + hermitian_metric.conj().transpose(0, 2, 1))
-        kahler_form_R6 = hermitian_to_kahler_real(hermitian_metric)
+        
+        # New function takes single matrix, so we need to loop for batch
+        kahler_form_R6 = np.array([kahler_form_real_matrix(hm) for hm in hermitian_metric])
         self.kahler_form_R7 = np.pad(kahler_form_R6, ((0,0), (0,1), (0,1)), mode='constant')
 
         self.dthetas = np.concatenate((np.zeros((self.cy_points_C5.shape[0], 6)), np.ones((self.cy_points_C5.shape[0], 1))), axis=1)
@@ -192,6 +202,145 @@ class LinkSample:
         if not hasattr(self, '_g2_metric'):
             self._g2_metric = np.array([compute_gG2(g2) for g2 in self.g2form_R7])
         return self._g2_metric
+
+
+###########################################################################
+# Data loading function for pre-computed g2_dataset.npz
+def load_g2_dataset(n_samples, use_10d_input=False, metric=False, dataset_type='train', 
+                     split_ratio=0.9, random_seed=42, dataset_path=None):
+    """
+    Load data from g2_dataset.npz file.
+    
+    Args:
+        n_samples: Number of samples to load
+        use_10d_input: If True, use 10D ambient coordinates as input.
+                       If False, use 7D representation with 2D patch indices.
+        metric: If True, output G2 metric (28D vector). If False, output 3-form (35D vector).
+        dataset_type: 'train' or 'val' for train/validation split
+        split_ratio: Ratio for train/val split (default 0.9)
+        random_seed: Random seed for reproducible shuffling
+        dataset_path: Path to g2_dataset.npz file. If None, uses default location.
+    
+    Returns:
+        tuple: (input_coords, patch_indices, output_vecs)
+               - input_coords: (n_samples, 10) or (n_samples, 7) depending on use_10d_input
+               - patch_indices: (n_samples, 2) if use_10d_input=False, else None
+               - output_vecs: (n_samples, 28) if metric=True, else (n_samples, 35)
+    """
+    # Import here to avoid circular dependency
+    from geometry.compression import form_to_vec, metric_to_vec
+    
+    # Determine default dataset path (go up to workspace root)
+    if dataset_path is None:
+        current_dir = os.path.dirname(os.path.dirname(__file__))
+        dataset_path = os.path.join(os.path.dirname(current_dir), 'g2_dataset.npz')
+    
+    # Load the dataset
+    if not os.path.exists(dataset_path):
+        raise FileNotFoundError(f"Dataset not found at {dataset_path}")
+    
+    print(f"  Loading data from: {dataset_path}")
+    # Use memory mapping to avoid loading entire dataset into RAM
+    # Only the selected indices will be loaded into memory
+    data = np.load(dataset_path, mmap_mode='r')
+    
+    # Get total samples without loading data into memory
+    total_samples = data['base_points'].shape[0]
+    
+    # Create reproducible shuffle
+    np.random.seed(random_seed)
+    indices = np.random.permutation(total_samples)
+    
+    # Split into train/val
+    split_idx = int(total_samples * split_ratio)
+    if dataset_type == 'train':
+        selected_indices = indices[:split_idx]
+    elif dataset_type == 'val':
+        selected_indices = indices[split_idx:]
+    else:
+        raise ValueError(f"dataset_type must be 'train' or 'val', got {dataset_type}")
+    
+    # Handle n_samples selection
+    available_samples = len(selected_indices)
+    if n_samples is None or n_samples >= available_samples:
+        # Use all available data for this split
+        n_samples_to_use = available_samples
+        if n_samples is None:
+            print(f"  Using all {available_samples} available samples ({dataset_type})")
+        else:
+            print(f"  Requested {n_samples} samples, using all {available_samples} available ({dataset_type})")
+    else:
+        # Use random subsample of requested size
+        n_samples_to_use = n_samples
+    
+    selected_indices = selected_indices[:n_samples_to_use]
+    
+    # NOW load only the selected data into memory (memory efficient)
+    print(f"  Loading {n_samples_to_use} samples into memory...")
+    base_points_selected = data['base_points'][selected_indices]
+    link_points_selected = data['link_points'][selected_indices]
+    rotations_selected = data['rotations'][selected_indices]
+    phis_selected = data['phis'][selected_indices]
+    g2_metrics_selected = data['g2_metrics'][selected_indices]
+    
+    # Convert to output vectors based on metric flag
+    import tensorflow as tf
+    if metric:
+        # Convert g2_metrics to 28D vectors
+        output_vecs = metric_to_vec(tf.convert_to_tensor(g2_metrics_selected, dtype=tf.float32)).numpy()
+    else:
+        # Convert phis (3-forms) to 35D vectors
+        output_vecs = form_to_vec(tf.convert_to_tensor(phis_selected, dtype=tf.float32)).numpy()
+    
+    if use_10d_input:
+        # Use full 10D ambient coordinates (link points in R^10)
+        input_coords = link_points_selected
+        patch_indices = None
+        print(f"  Loaded {n_samples} samples ({dataset_type}): 10D input mode")
+    else:
+        # Use 7D local representation: [Re(C^3), Im(C^3), theta]
+        # This matches the original LinkSample.link_points(local=True) format
+        
+        # Convert R^10 to C^5 for base points (CY points)
+        from geometry.patches import CoordChange_C5R10
+        base_points_C5 = CoordChange_C5R10(base_points_selected, inverse=True)
+        
+        # Find which coordinate is set to 1 (the "one" coordinate in patching)
+        # This is the coordinate with magnitude closest to 1
+        one_idxs = np.argmax(np.abs(base_points_C5 - 1.0) < 0.1, axis=1)
+        
+        # Find dropped coordinate using heuristic: smallest magnitude (excluding one_idx)
+        # This approximates the maximum dQ coordinate that would be dropped in patching
+        magnitudes = np.abs(base_points_C5)
+        dropped_idxs = np.zeros(n_samples, dtype=np.int32)
+        for i in range(n_samples):
+            mags_copy = magnitudes[i].copy()
+            mags_copy[one_idxs[i]] = np.inf  # Exclude the one coordinate
+            dropped_idxs[i] = np.argmin(mags_copy)
+        
+        # Create 7D representation: [Re(C^3), Im(C^3), theta]
+        # Extract C^3 by removing one_idx and dropped_idx from C^5
+        input_coords = np.zeros((n_samples, 7), dtype=np.float32)
+        for i in range(n_samples):
+            # Create mask to extract the 3 remaining complex coordinates
+            mask = np.ones(5, dtype=bool)
+            mask[one_idxs[i]] = False
+            mask[dropped_idxs[i]] = False
+            
+            # Extract C^3 coordinates
+            c3_coords = base_points_C5[i][mask]  # 3 complex numbers
+            
+            # Build 7D vector: [Re(c3), Im(c3), theta]
+            input_coords[i, :3] = np.real(c3_coords)
+            input_coords[i, 3:6] = np.imag(c3_coords)
+            input_coords[i, 6] = rotations_selected[i]
+        
+        # Stack patch indices
+        patch_indices = np.stack([one_idxs, dropped_idxs], axis=1).astype(np.int32)
+        
+        print(f"  Loaded {n_samples} samples ({dataset_type}): 7D input mode with patch info")
+    
+    return input_coords, patch_indices, output_vecs
 
     
 

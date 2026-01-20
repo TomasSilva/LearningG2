@@ -5,15 +5,26 @@
 # Select whether to learn the G2-metric
 metric: false
 
+# Select input mode for the model:
+# - true: use 10D ambient coordinates as input (no patch information)
+# - false: use 7D real representation with 2D patch indices (default)
+use_10d_input: false
+
 ###############################################################################
 # Data set-up
+# Use pre-computed g2_dataset.npz file (true) or generate data on-the-fly (false)
+use_g2_dataset: true
+
 # Number of samples to generate for training
-num_samples: 500000  # Increased to reduce overfitting
+# - Set to a number (e.g., 100000) to use a random sample of that size
+# - Set to null to use all available training data from the dataset
+# - If set higher than available data, all available data will be used
+num_samples: null
 
 # Target patch filter (optional)
 # Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
 # Set to null to use all patches (default behavior)
-target_patch: [0, 1] 
+target_patch: null
 
 ###############################################################################
 # Model set-up
@@ -53,7 +64,7 @@ l2_regularization: 0.0001   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
 epochs: 300
 
 # Number of times to resample training data and continue training
-n_data_resamples: 20
+n_data_resamples: 10
 
 # Batch size for training
 batch_size: 512
@@ -66,11 +77,12 @@ min_learning_rate: 0.0001
 # 1.0 = treat all components equally (standard MSE)
 # 0.0 = ignore zero components completely (focus only on non-zero components)
 # Values between 0 and 1 reduce but don't eliminate zero component contribution
-zero_component_weight: 0.0
+zero_component_weight: 1.0
 
 # Validation hyperparameters
 validate: true
 val_print: false
+# Number of validation samples (set to null to use all available validation data)
 num_val_samples: 5000 
 val_batch_size: 500
 

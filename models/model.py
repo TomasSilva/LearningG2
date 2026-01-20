@@ -370,6 +370,7 @@ class NormalisedModel(tf.keras.Model):
         super().__init__(**kwargs)
         self.hp = hp
         self.metric = self.hp["metric"]
+        self.use_10d_input = self.hp.get("use_10d_input", False)
 
         # Compute the number of independent metric entries
         if self.metric:
@@ -381,35 +382,41 @@ class NormalisedModel(tf.keras.Model):
         # Each coordinate can be 0-4, representing which coord is set to 1 or dropped
         self.embedding_dim = self.hp["embedding_dim"]
         
-        # Define architecture
-        coord_input = tf.keras.layers.Input(shape=(7,), name="coord_input")
-        patch_indices_input = tf.keras.layers.Input(shape=(2,), dtype=tf.int32, name="patch_indices_input")
-
-        # Handle patch encoding based on embedding_dim
-        if self.embedding_dim is None:
-            # Use one-hot encoding: 2 indices × 5 classes = 10-dimensional vector
-            one_idx_onehot = tf.keras.layers.Lambda(
-                lambda x: tf.one_hot(x[:, 0], depth=5),
-                output_shape=(5,)
-            )(patch_indices_input)
-            dropped_idx_onehot = tf.keras.layers.Lambda(
-                lambda x: tf.one_hot(x[:, 1], depth=5),
-                output_shape=(5,)
-            )(patch_indices_input)
-            patch_embed = tf.keras.layers.Concatenate()([one_idx_onehot, dropped_idx_onehot])
+        # Define architecture based on input mode
+        if self.use_10d_input:
+            # 10D input mode: no patch information needed
+            coord_input = tf.keras.layers.Input(shape=(10,), name="coord_input")
+            combined_input = coord_input
         else:
-            # Use dense embedding layer
-            self.patch_embedding = tf.keras.layers.Dense(
-                self.embedding_dim,
-                activation=None,
-                use_bias=True,
-                name="patch_embedding"
-            )
-            patch_indices_float = tf.keras.layers.Lambda(lambda x: tf.cast(x, tf.float32))(patch_indices_input)
-            patch_embed = self.patch_embedding(patch_indices_float)
-        
-        # Concatenate coordinates with patch representation
-        combined_input = tf.keras.layers.Concatenate()([coord_input, patch_embed])
+            # 7D input mode with patch information (default)
+            coord_input = tf.keras.layers.Input(shape=(7,), name="coord_input")
+            patch_indices_input = tf.keras.layers.Input(shape=(2,), dtype=tf.int32, name="patch_indices_input")
+
+            # Handle patch encoding based on embedding_dim
+            if self.embedding_dim is None:
+                # Use one-hot encoding: 2 indices × 5 classes = 10-dimensional vector
+                one_idx_onehot = tf.keras.layers.Lambda(
+                    lambda x: tf.one_hot(x[:, 0], depth=5),
+                    output_shape=(5,)
+                )(patch_indices_input)
+                dropped_idx_onehot = tf.keras.layers.Lambda(
+                    lambda x: tf.one_hot(x[:, 1], depth=5),
+                    output_shape=(5,)
+                )(patch_indices_input)
+                patch_embed = tf.keras.layers.Concatenate()([one_idx_onehot, dropped_idx_onehot])
+            else:
+                # Use dense embedding layer
+                self.patch_embedding = tf.keras.layers.Dense(
+                    self.embedding_dim,
+                    activation=None,
+                    use_bias=True,
+                    name="patch_embedding"
+                )
+                patch_indices_float = tf.keras.layers.Lambda(lambda x: tf.cast(x, tf.float32))(patch_indices_input)
+                patch_embed = self.patch_embedding(patch_indices_float)
+            
+            # Concatenate coordinates with patch representation
+            combined_input = tf.keras.layers.Concatenate()([coord_input, patch_embed])
 
         # Feedforward layers
         initializer = ScaledGlorotUniform(scale=self.hp["parameter_initialisation_scale"])
@@ -449,10 +456,17 @@ class NormalisedModel(tf.keras.Model):
             kernel_regularizer=regularizer
         )(x)
            
-        self.model = tf.keras.Model(
-            inputs=[coord_input, patch_indices_input], 
-            outputs=outputs
-        )
+        # Create model with appropriate inputs based on mode
+        if self.use_10d_input:
+            self.model = tf.keras.Model(
+                inputs=coord_input, 
+                outputs=outputs
+            )
+        else:
+            self.model = tf.keras.Model(
+                inputs=[coord_input, patch_indices_input], 
+                outputs=outputs
+            )
 
     def call(self, inputs):
         return self.model(inputs)
@@ -474,7 +488,8 @@ class NormalisedModel(tf.keras.Model):
             'hp': serializable_hp,
             'metric': self.metric,
             'n_out': self.n_out,
-            'embedding_dim': self.embedding_dim
+            'embedding_dim': self.embedding_dim,
+            'use_10d_input': self.use_10d_input
         })
         return config
     

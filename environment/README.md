@@ -1,4 +1,9 @@
 ## Setup:
+⚠️ This repository uses [Git LFS](https://git-lfs.com/).
+Before cloning, run:
+```bash
+git lfs install
+```
 
 We recommend the use of a virtual environment. Below demonstrated with conda:
 
