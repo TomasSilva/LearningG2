@@ -1,5 +1,5 @@
 # Learning G2-Structure 3-forms
-First set up the python environment, following the instructions in `environment/README.md`.  
+First set up the python environment, following the instructions in [`environment/README.md`](./environment/README.md).  
 
 ## Running:
 To train the CY metric model run in the CLI in this repo:  

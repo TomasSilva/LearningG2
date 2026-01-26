@@ -29,7 +29,7 @@ if hasattr(cymetric, 'cymetric'):
     sys.modules['cymetric'] = cymetric.cymetric
 
 # Import functions
-from geometry.geometry import kahler_form_real_matrix, holomorphic_volume_real_imag, riemannian_metric_real_matrix, compute_gG2
+from geometry.geometry import kahler_form_real_matrix, holomorphic_volume_real_imag, riemannian_metric_real_matrix, compute_gG2, find_max_dQ_coords
 # # from ..geometry.patches import CoordChange_C5R10
 from geometry.wedge import wedge
 # from models.model import get_model_path
@@ -43,41 +43,41 @@ from cymetric.models.helper import prepare_basis
 from cymetric.models.models import MultFSModel
 
 
-def _find_max_dQ_coords(points, BASIS):
-    r"""Finds the coordinates for which |dQ/dz| is largest.
+# def _find_max_dQ_coords(points, BASIS):
+#     r"""Finds the coordinates for which |dQ/dz| is largest.
 
-    Args:
-        points (ndarray[(n_p, ncoords), np.complex128]): Points.
+#     Args:
+#         points (ndarray[(n_p, ncoords), np.complex128]): Points.
 
-    Returns:
-        ndarray[(n_p), np.int64]: max(dQdz) indices
-    """
-    dQdz = np.abs(_compute_dQdz(points, BASIS))
-    dQdz = dQdz * (~np.isclose(points, complex(1, 0)))
-    return np.argmax(dQdz, axis=-1)
+#     Returns:
+#         ndarray[(n_p), np.int64]: max(dQdz) indices
+#     """
+#     dQdz = np.abs(_compute_dQdz(points, BASIS))
+#     dQdz = dQdz * (~np.isclose(points, complex(1, 0)))
+#     return np.argmax(dQdz, axis=-1)
 
-def _compute_dQdz(points, BASIS):
-        r"""Computes dQdz at each point.
+# def _compute_dQdz(points, BASIS):
+#         r"""Computes dQdz at each point.
 
-        Args:
-            points (ndarray([n_p, ncoords], np.complex128)): Points.
+#         Args:
+#             points (ndarray([n_p, ncoords], np.complex128)): Points.
 
-        Returns:
-            ndarray([n_p, ncoords], np.complex): dQdz at each point.
-        """
-        p_exp = np.expand_dims(np.expand_dims(points, 1), 1)
-        dQdz = np.power(p_exp, BASIS['DQDZB0'])
-        dQdz = np.multiply.reduce(dQdz, axis=-1)
-        dQdz = np.multiply(BASIS['DQDZF0'], dQdz)
-        dQdz = np.add.reduce(dQdz, axis=-1)
-        return dQdz
+#         Returns:
+#             ndarray([n_p, ncoords], np.complex): dQdz at each point.
+#         """
+#         p_exp = np.expand_dims(np.expand_dims(points, 1), 1)
+#         dQdz = np.power(p_exp, BASIS['DQDZB0'])
+#         dQdz = np.multiply.reduce(dQdz, axis=-1)
+#         dQdz = np.multiply(BASIS['DQDZF0'], dQdz)
+#         dQdz = np.add.reduce(dQdz, axis=-1)
+#         return dQdz
 
 def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         base_point = p
         applied_rotation = rotation
         
         point_cc = p[0:5] + 1.j*p[5:]
-        drop_max = int(_find_max_dQ_coords(point_cc, BASIS))
+        drop_max = int(find_max_dQ_coords(point_cc, BASIS))
         drop_one = int(np.argmin(np.abs(point_cc - 1)))
 
         model_out = np.array(fmodel(np.expand_dims(p, axis=0))[0])
@@ -120,7 +120,7 @@ def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         
         g2_metric = compute_gG2(g2)
         
-        return base_point, link_pt, applied_rotation, g2, star_g2, riemannian_metric, g2_metric
+        return base_point, link_pt, applied_rotation, g2, star_g2, riemannian_metric, g2_metric, drop_max, drop_one, eta
     
 
 if __name__ == "__main__":
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     def compute_sample(point, rotation):
         return sampler_g2_package_R7(point, fmodel, BASIS, rotation=rotation)
 
-    X = data["X_train"]
+    X = data["X_train"][:40000]
 
     tasks = []
     for pt in X:
@@ -171,7 +171,7 @@ if __name__ == "__main__":
         delayed(compute_sample)(pt, rot)
         for pt, rot in tqdm(tasks, desc="Sampling G2 points")
     )
-# base_point, link_pt, applied_rotation, g2, star_g2, riemannian_metric
+
     base_points = np.stack([r[0] for r in results])
     link_points = np.stack([r[1] for r in results])
     rotations = np.stack([r[2] for r in results])
@@ -179,27 +179,21 @@ if __name__ == "__main__":
     psis =  np.stack([r[4] for r in results])
     riemannian_metrics = np.stack([r[5] for r in results])
     g2_metrics = np.stack([r[6] for r in results])
+    drop_maxs = np.stack([r[7] for r in results])
+    drop_ones = np.stack([r[8] for r in results])
+    etas = np.stack([r[9] for r in results])
 
-    np.savez_compressed("./sampling/g2_dataset.npz", base_points=base_points, link_points=link_points, rotations=rotations, phis=phis, psis=psis, riemannian_metrics=riemannian_metrics, g2_metrics=g2_metrics)
+    np.savez_compressed("./sampling/g2_dataset.npz", base_points=base_points, 
+                        link_points=link_points, 
+                        rotations=rotations, 
+                        phis=phis, 
+                        psis=psis, 
+                        riemannian_metrics=riemannian_metrics, 
+                        g2_metrics=g2_metrics,
+                        drop_maxs=drop_maxs,
+                        drop_ones=drop_ones,
+                        etas=etas)
 
-    # def compute_sample(point):
-    #     return sampler_g2_package_R7(point, fmodel, BASIS, rotation=0.0)
-    
-    # def compute_sample_rotated(point):
-    #     return sampler_g2_package_R7(point, fmodel, BASIS, rotation=np.random.uniform(0, 2*np.pi))
-
-    # X = data["X_train"]
-
-    # results = Parallel(n_jobs=-1, backend="threading")(
-    #     delayed(compute_sample)(pt) for pt in X
-    # )
-
-    # link_points = np.stack([r[0] for r in results])
-    # phis = np.stack([r[1] for r in results])
-    # psis = np.stack([r[2] for r in results])
-    
-    
-    # np.savez("./sampling/g2_dataset.npz", X=points, phi=phis, psi=psis)
     
     print("Saved G2 dataset.")
     

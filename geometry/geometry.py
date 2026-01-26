@@ -8,6 +8,34 @@ from geometry.compression import vec_to_form
 from geometry.wedge import wedge
 from functools import lru_cache
 
+def find_max_dQ_coords(points, BASIS):
+    r"""Finds the coordinates for which |dQ/dz| is largest.
+
+    Args:
+        points (ndarray[(n_p, ncoords), np.complex128]): Points.
+
+    Returns:
+        ndarray[(n_p), np.int64]: max(dQdz) indices
+    """
+    dQdz = np.abs(_compute_dQdz(points, BASIS))
+    dQdz = dQdz * (~np.isclose(points, complex(1, 0)))
+    return np.argmax(dQdz, axis=-1)
+
+def _compute_dQdz(points, BASIS):
+        r"""Computes dQdz at each point.
+
+        Args:
+            points (ndarray([n_p, ncoords], np.complex128)): Points.
+
+        Returns:
+            ndarray([n_p, ncoords], np.complex): dQdz at each point.
+        """
+        p_exp = np.expand_dims(np.expand_dims(points, 1), 1)
+        dQdz = np.power(p_exp, BASIS['DQDZB0'])
+        dQdz = np.multiply.reduce(dQdz, axis=-1)
+        dQdz = np.multiply(BASIS['DQDZF0'], dQdz)
+        dQdz = np.add.reduce(dQdz, axis=-1)
+        return dQdz
 
 def riemannian_metric_real_matrix(g):
     """
