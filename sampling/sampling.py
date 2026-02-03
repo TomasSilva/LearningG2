@@ -11,6 +11,7 @@ import yaml
 import pickle as pickle
 import itertools
 from tqdm import tqdm
+
 from joblib import Parallel, delayed
 tfk = tf.keras
 # Setup path for cymetric package
@@ -71,6 +72,113 @@ from cymetric.models.models import MultFSModel
 #         dQdz = np.multiply(BASIS['DQDZF0'], dQdz)
 #         dQdz = np.add.reduce(dQdz, axis=-1)
 #         return dQdz
+def oriented_3form_components(T):
+    T = np.asarray(T)
+    assert T.shape == (7,7,7)
+    triples = list(itertools.combinations(range(7), 3))
+    vals = np.array([T[i,j,k] for (i,j,k) in triples], dtype=T.dtype)
+    return vals
+
+
+def oriented_4form_components(T):
+    """
+    Extract the 35 oriented components of a (7,7,7,7) tensor T,
+    corresponding to indices (i,j,k,l) with i<j<k<l.
+
+    Returns
+    -------
+    comps : np.ndarray, shape (35,)
+        Oriented components ordered lexicographically.
+    indices : list of tuples
+        The corresponding index tuples (i,j,k,l).
+    """
+    if T.shape != (7, 7, 7, 7):
+        raise ValueError("Input tensor must have shape (7,7,7,7)")
+
+    indices = list(itertools.combinations(range(7), 4))
+    vals = np.array([T[i,j,k,l] for (i,j,k,l) in indices], dtype=T.dtype)
+    return vals
+
+def upper_triangular_part_7x7(A, include_diagonal=True):
+    """
+    Extract the upper triangular part of a 7x7 matrix.
+
+    Parameters
+    ----------
+    A : array_like, shape (7,7)
+        Input matrix.
+    include_diagonal : bool
+        Whether to include the diagonal entries.
+
+    Returns
+    -------
+    v : ndarray, shape (28,) if include_diagonal else (21,)
+        Upper triangular entries in row-major order.
+    """
+    A = np.asarray(A)
+    assert A.shape == (7, 7), "Input must be a 7x7 matrix"
+
+    if include_diagonal:
+        idx = np.triu_indices(7)
+    else:
+        idx = np.triu_indices(7, k=1)
+
+    return A[idx]
+
+
+def upper_triangular_part_6x6(A, include_diagonal=True):
+    """
+    Extract the upper triangular part of a 6x6 matrix.
+
+    Parameters
+    ----------
+    A : array_like, shape (6,6)
+        Input matrix.
+    include_diagonal : bool
+        Whether to include the diagonal entries.
+
+    Returns
+    -------
+    v : ndarray, shape (21,) if include_diagonal else (15,)
+        Upper triangular entries in row-major order.
+    """
+    A = np.asarray(A)
+    assert A.shape == (6, 6), "Input must be a 6x6 matrix"
+
+    if include_diagonal:
+        idx = np.triu_indices(6)
+    else:
+        idx = np.triu_indices(6, k=1)
+
+    return A[idx]
+
+def split_npz(data, train=0.9, val=0.05, test=0.05, seed=42):
+    assert abs(train + val + test - 1.0) < 1e-8
+
+    # Number of samples (assume all arrays share axis 0)
+    N = data[data.files[0]].shape[0]
+
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(N)
+
+    n_train = int(train * N)
+    n_val   = int(val * N)
+
+    idx_train = idx[:n_train]
+    idx_val   = idx[n_train:n_train + n_val]
+    idx_test  = idx[n_train + n_val:]
+
+    train_data = {}
+    val_data   = {}
+    test_data  = {}
+
+    for k in data.files:
+        arr = data[k]
+        train_data[k] = arr[idx_train]
+        val_data[k]   = arr[idx_val]
+        test_data[k]  = arr[idx_test]
+
+    return train_data, val_data, test_data
 
 def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         base_point = p
@@ -120,7 +228,7 @@ def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         
         g2_metric = compute_gG2(g2)
         
-        return base_point, link_pt, applied_rotation, g2, star_g2, riemannian_metric, g2_metric, drop_max, drop_one, eta
+        return base_point, link_pt, applied_rotation, oriented_3form_components(g2), oriented_4form_components(star_g2), upper_triangular_part_6x6(riemannian_metric), upper_triangular_part_7x7(g2_metric), drop_max, drop_one, eta
     
 
 if __name__ == "__main__":
@@ -159,7 +267,7 @@ if __name__ == "__main__":
     def compute_sample(point, rotation):
         return sampler_g2_package_R7(point, fmodel, BASIS, rotation=rotation)
 
-    X = data["X_train"][:40000]
+    X = data["X_train"]
 
     tasks = []
     for pt in X:
@@ -196,5 +304,15 @@ if __name__ == "__main__":
 
     
     print("Saved G2 dataset.")
+    
+    data = np.load("./sampling/g2_dataset.npz")
+    
+    train_data, val_data, test_data = split_npz(data, train=0.9, val=0.05, test=0.05)
+
+    np.savez_compressed("g2_train.npz", **train_data)
+    np.savez_compressed("g2_val.npz",   **val_data)
+    np.savez_compressed("g2_test.npz",  **test_data)
+    
+    print("Splitted dataset into train, val, and test.")
     
     
