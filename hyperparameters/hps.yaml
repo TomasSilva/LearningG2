@@ -1,0 +1,86 @@
+### Hyperparameters for the G2-structure learning runs ###
+
+###############################################################################
+# Geometric set-up
+# Select whether to learn the G2-metric
+metric: false
+
+###############################################################################
+# Data set-up
+# Number of samples to generate for training
+num_samples: 100000  # Increased to reduce overfitting
+
+# Target patch filter (optional)
+# Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
+# Set to null to use all patches (default behavior)
+target_patch: [0, 1] 
+
+###############################################################################
+# Model set-up
+# Import a saved model instead of initiating a new one (null means randomly initialise)
+saved_model: false
+saved_model_path: ...
+# ...the below are ignored if `saved_model` is true and a model is imported
+
+# Number of hidden units in each layer
+n_hidden: 256
+
+# Number of layers in the neural network
+n_layers: 4
+
+# Activation function to use in the neural network (e.g., gelu, relu)
+activations: gelu
+
+# Whether to use bias terms in the neural network layers
+use_bias: true
+
+# Scale for the model parameter uniform initialisation
+parameter_initialisation_scale: 1.0
+
+# Dimension of the patch-index embedding layer
+embedding_dim: null
+
+# Huber loss parameter (set to null to use standard MSE loss)
+huber_delta: 1.0
+
+# Regularization parameters (disable for single patch - simpler problem)
+dropout_rate: 0.0           # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
+l2_regularization: 0.0001   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
+
+###############################################################################
+# Training set-up
+# Number of training epochs
+epochs: 300
+
+# Number of times to resample training data and continue training
+n_data_resamples: 10
+
+# Batch size for training
+batch_size: 512
+
+# Learning rate for the optimizer
+init_learning_rate: 0.001
+min_learning_rate: 0.0001
+
+# Weight applied to structurally zero components in weighted MSE loss
+# 1.0 = treat all components equally (standard MSE)
+# 0.0 = ignore zero components completely (focus only on non-zero components)
+# Values between 0 and 1 reduce but don't eliminate zero component contribution
+zero_component_weight: 0.0
+
+# Validation hyperparameters
+validate: true
+val_print: false
+num_val_samples: 5000 
+val_batch_size: 500
+
+# Verbosity level for print logging (e.g., 0 for silent, 1 for progress messages)
+verbosity: 1
+
+###############################################################################
+#Logging set-up
+###where to save the models too
+
+# Whether to print a breakdown of individual loss terms with each training step
+print_losses: false
+print_interval: 1   
