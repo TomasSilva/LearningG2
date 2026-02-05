@@ -113,22 +113,38 @@ def compute_hodge_star_psi(phi, metric):
     return psi
 
 
-def check_phi_wedge_psi(data, n_points=100, start_idx=0):
-    """Check φ ∧ ψ = 7·Vol(g_φ) using dataset values."""
-    print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} points (using dataset)...")
+def check_phi_wedge_psi(data, g2_models, n_points=100, start_idx=0):
+    """Check φ ∧ ψ = 7·Vol(g_φ) using model predictions."""
+    print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} points (using model predictions)...")
     
-    phis = data["phis"]
-    psis = data["psis"]
-    gG2s = data["g2_metrics"]
+    link_points = data["link_points"]
+    etas = data["etas"]
+    drop_maxs = data["drop_maxs"]
+    drop_ones = data["drop_ones"]
     
     vals = []
-    for i in tqdm(range(start_idx, start_idx + n_points), desc="φ∧ψ check (dataset)"):
-        phi = vec_to_form(phis[i], n=7, k=3)
-        psi = vec_to_form(psis[i], n=7, k=4)
-        gG2 = vec_to_metric(gG2s[i])
+    for i in tqdm(range(start_idx, start_idx + n_points), desc="φ∧ψ check (model)"):
+        # Prepare model input: link_point (10) + eta (7) + patch indices (2) = 19
+        link_pt = link_points[i]
+        eta = etas[i]
+        drop_max = drop_maxs[i]
+        drop_one = drop_ones[i]
+        
+        X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
+        X_input = np.expand_dims(X_input, axis=0)
+        
+        # Predict φ and G2 metric
+        phi_vec = g2_models['3form'].predict(X_input, verbose=0)[0]
+        metric_vec = g2_models['metric'].predict(X_input, verbose=0)[0]
+        
+        phi = vec_to_form(phi_vec, n=7, k=3)
+        metric = vec_to_metric(metric_vec)
+        
+        # Compute ψ = ⋆_{g_G2} φ using the Hodge star operator
+        psi = Hodge_Dual(phi, metric)
         
         prod = wedge(phi, psi)[0, 1, 2, 3, 4, 5, 6]
-        vol = np.sqrt(np.linalg.det(gG2))
+        vol = np.sqrt(np.linalg.det(metric))
         
         vals.append(prod / vol)
     
@@ -441,10 +457,10 @@ def main():
     # Load CY model for derivative checks (needed for ω)
     fmodel, BASIS, cy_data = load_cy_model(cy_run_number, args.cy_data_dir, script_dir)
     
-    # Check 1: φ ∧ ψ = 7·Vol (using dataset values)
+    # Check 1: φ ∧ ψ = 7·Vol (using model predictions)
     n_phi_psi = len(g2_data['phis']) - args.start_idx if args.n_phi_psi is None else args.n_phi_psi
-    vals_phi_psi = check_phi_wedge_psi(g2_data, n_phi_psi, args.start_idx)
-    print_statistics("φ∧ψ/Vol (dataset)", vals_phi_psi)
+    vals_phi_psi = check_phi_wedge_psi(g2_data, g2_models, n_phi_psi, args.start_idx)
+    print_statistics("φ∧ψ/Vol (model predictions)", vals_phi_psi)
     plot_phi_wedge_psi(vals_phi_psi, g2_run_number, output_dir)
     
     # Check 2 & 3: dψ = 0 and dφ = ω² (using model predictions in neighborhoods)
