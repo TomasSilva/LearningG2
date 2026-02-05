@@ -43,7 +43,7 @@ from geometry.compression import form_to_vec, vec_to_form, metric_to_vec, vec_to
 
 # Import analysis utilities
 from analysis.utils import (
-    get_most_recent_g2_run_number,
+
     get_most_recent_cy_run_number,
     load_cy_model,
     load_g2_data,
@@ -89,19 +89,27 @@ def sampler_g2_package(p, fmodel, BASIS):
     return g2, star_g2
 
 
-def check_phi_wedge_psi(data, n_points=100, start_idx=0):
+def check_phi_wedge_psi(data, n_points=100):
     """Check φ ∧ ψ = 7·Vol(K_f, g_φ)."""
-    print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} points...")
-    
     phis = data["phis"]
     psis = data["psis"]
     gG2s = data["g2_metrics"]
     
+    # Random sampling if n_points < dataset size
+    total_points = len(phis)
+    if n_points < total_points:
+        indices = np.random.choice(total_points, size=n_points, replace=False)
+        print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} randomly sampled points...")
+    else:
+        indices = np.arange(total_points)
+        n_points = total_points
+        print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on all {n_points} points...")
+    
     vals = []
-    for i in tqdm(range(start_idx, start_idx + n_points), desc="φ∧ψ check"):
-        phi = vec_to_form(phis[i], n=7, k=3)
-        psi = vec_to_form(psis[i], n=7, k=4)
-        gG2 = vec_to_metric(gG2s[i])
+    for idx in tqdm(indices, desc="φ∧ψ check"):
+        phi = vec_to_form(phis[idx], n=7, k=3)
+        psi = vec_to_form(psis[idx], n=7, k=4)
+        gG2 = vec_to_metric(gG2s[idx])
         
         prod = wedge(phi, psi)[0, 1, 2, 3, 4, 5, 6]
         vol = np.sqrt(np.linalg.det(gG2))
@@ -114,9 +122,17 @@ def check_phi_wedge_psi(data, n_points=100, start_idx=0):
 def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-12, 
                           global_rotation_epsilon=1e-12):
     """Check dψ = 0 and dφ = ω²."""
-    print(f"\nChecking dψ = 0 and dφ = ω² on {n_points} points...")
-    
     base_points = data['base_points']
+    
+    # Random sampling if n_points < dataset size
+    total_points = len(base_points)
+    if n_points < total_points:
+        indices = np.random.choice(total_points, size=n_points, replace=False)
+        print(f"\nChecking dψ = 0 and dφ = ω² on {n_points} randomly sampled points...")
+    else:
+        indices = np.arange(total_points)
+        n_points = total_points
+        print(f"\nChecking dψ = 0 and dφ = ω² on all {n_points} points...")
     
     vals_dpsi = []
     vals_dphi = []
@@ -133,8 +149,8 @@ def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-12,
     # Use find_max_dQ_coords with BASIS
     find_max_fn = lambda point_cc: find_max_dQ_coords(point_cc, BASIS)
     
-    for i in tqdm(range(n_points), desc="dψ and dφ check"):
-        point = base_points[i]
+    for idx in tqdm(indices, desc="dψ and dφ check"):
+        point = base_points[idx]
         
         # Check dψ
         dic_psi = sample_numerical_g2_neighborhood_val(
@@ -280,20 +296,14 @@ def main():
     parser = argparse.ArgumentParser(
         description='Check G2 identities on learned G2 structures'
     )
-    parser.add_argument('--g2-run-number', type=int, default=None,
-                       help='G2 model run number to use (default: most recent)')
     parser.add_argument('--cy-run-number', type=int, default=None,
                        help='CY model run number to use (default: auto-detect from dataset)')
     parser.add_argument('--g2-data', type=str, default='./samples/link_data/g2_test.npz',
                        help='Path to G2 dataset')
     parser.add_argument('--cy-data-dir', type=str, default='./samples/cy_data',
                        help='Directory containing CY data')
-    parser.add_argument('--n-phi-psi', type=int, default=None,
-                       help='Number of points for φ∧ψ check (default: all)')
-    parser.add_argument('--n-derivatives', type=int, default=None,
-                       help='Number of points for dψ and dφ checks (default: all)')
-    parser.add_argument('--start-idx', type=int, default=0,
-                       help='Starting index in dataset')
+    parser.add_argument('--n-points', type=int, default=None,
+                       help='Number of points for all identity checks (default: all, or random sample if specified)')
     parser.add_argument('--epsilon', type=float, default=1e-12,
                        help='Epsilon for numerical derivative')
     parser.add_argument('--rotation-epsilon', type=float, default=1e-12,
@@ -310,20 +320,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print("=" * 80)
-    print("G2 Identities Check")
+    print("G2 Identities Check (Analytical Construction)")
     print("=" * 80)
-    
-    # Determine G2 run number
-    if args.g2_run_number is None:
-        g2_run_number = get_most_recent_g2_run_number(script_dir / 'models' / 'link_models')
-        if g2_run_number is None:
-            print("Warning: No G2 models found. Will check dataset only.")
-            g2_run_number = 0  # Use 0 for dataset-only checks
-        else:
-            print(f"Auto-detected most recent G2 model: run {g2_run_number}")
-    else:
-        g2_run_number = args.g2_run_number
-        print(f"Using specified G2 model run: {g2_run_number}")
     
     # Load G2 data
     g2_data, dataset_cy_run = load_g2_data(g2_data_path)
@@ -354,17 +352,16 @@ def main():
     print()
     
     # Check 1: φ ∧ ψ = 7·Vol
-    n_phi_psi = len(g2_data['phis']) - args.start_idx if args.n_phi_psi is None else args.n_phi_psi
-    vals_phi_psi = check_phi_wedge_psi(g2_data, n_phi_psi, args.start_idx)
+    n_points = len(g2_data['phis']) if args.n_points is None else args.n_points
+    vals_phi_psi = check_phi_wedge_psi(g2_data, n_points)
     print_statistics("φ∧ψ/Vol", vals_phi_psi)
-    plot_phi_wedge_psi(vals_phi_psi, g2_run_number, output_dir)
+    plot_phi_wedge_psi(vals_phi_psi, "analytic", output_dir)
     
     # Check 2 & 3: dψ = 0 and dφ = ω²
     fmodel, BASIS, cy_data = load_cy_model(cy_run_number, args.cy_data_dir, script_dir)
     
-    n_derivatives = len(g2_data['base_points']) if args.n_derivatives is None else args.n_derivatives
     vals_dpsi, vals_dphi, vals_ratio = check_d_psi_and_d_phi(
-        g2_data, fmodel, BASIS, n_derivatives, 
+        g2_data, fmodel, BASIS, n_points, 
         args.epsilon, args.rotation_epsilon
     )
     
@@ -372,9 +369,9 @@ def main():
     print_statistics("||dφ||", vals_dphi)
     print_statistics("||dφ||/||ω²||", vals_ratio)
     
-    plot_dpsi(vals_dpsi, g2_run_number, output_dir)
-    plot_dphi(vals_dphi, g2_run_number, output_dir)
-    plot_ratio(vals_ratio, g2_run_number, output_dir)
+    plot_dpsi(vals_dpsi, "analytic", output_dir)
+    plot_dphi(vals_dphi, "analytic", output_dir)
+    plot_ratio(vals_ratio, "analytic", output_dir)
     
     print()
     print("=" * 80)

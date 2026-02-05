@@ -380,8 +380,6 @@ def main():
                        help=f'Activation function (default: {ACTIVATION})')
     parser.add_argument('--n-epochs', type=int, default=N_EPOCHS,
                        help=f'Number of training epochs (default: {N_EPOCHS})')
-    parser.add_argument('--n-fold', type=int, default=N_FOLD,
-                       help=f'Number of folds (default: {N_FOLD})')
     parser.add_argument('--data-dir', type=str, default=DATA_DIR,
                        help=f'Directory for training data (default: {DATA_DIR})')
     parser.add_argument('--save-dir', type=str, default=SAVE_DIR,
@@ -412,7 +410,7 @@ def main():
         batch_sizes=BATCH_SIZES,
         alpha=ALPHA,
         n_epochs=args.n_epochs,
-        n_fold=args.n_fold,
+        n_fold=N_FOLD,
         save_dir=args.save_dir,
         run_number=args.run_number
     )

@@ -113,22 +113,30 @@ def compute_hodge_star_psi(phi, metric):
     return psi
 
 
-def check_phi_wedge_psi(data, g2_models, n_points=100, start_idx=0):
+def check_phi_wedge_psi(data, g2_models, n_points=100):
     """Check φ ∧ ψ = 7·Vol(g_φ) using model predictions."""
-    print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} points (using model predictions)...")
-    
     link_points = data["link_points"]
     etas = data["etas"]
     drop_maxs = data["drop_maxs"]
     drop_ones = data["drop_ones"]
     
+    # Random sampling if n_points < dataset size
+    total_points = len(link_points)
+    if n_points < total_points:
+        indices = np.random.choice(total_points, size=n_points, replace=False)
+        print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on {n_points} randomly sampled points (using model predictions)...")
+    else:
+        indices = np.arange(total_points)
+        n_points = total_points
+        print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on all {n_points} points (using model predictions)...")
+    
     vals = []
-    for i in tqdm(range(start_idx, start_idx + n_points), desc="φ∧ψ check (model)"):
+    for idx in tqdm(indices, desc="φ∧ψ check (model)"):
         # Prepare model input: link_point (10) + eta (7) + patch indices (2) = 19
-        link_pt = link_points[i]
-        eta = etas[i]
-        drop_max = drop_maxs[i]
-        drop_one = drop_ones[i]
+        link_pt = link_points[idx]
+        eta = etas[idx]
+        drop_max = drop_maxs[idx]
+        drop_one = drop_ones[idx]
         
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
@@ -235,9 +243,9 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
     
     find_max_fn = lambda point_cc: find_max_dQ_coords(point_cc, BASIS)
     
-    for i in tqdm(range(n_points), desc="dψ and dφ check (models)"):
-        base_point = base_points[i]
-        rotation = rotations[i]
+    for idx in tqdm(indices, desc="dψ and dφ check (model)"):
+        base_point = base_points[idx]
+        rotation = rotations[idx]
         
         # Check dψ using model predictions in neighborhood
         dic_psi = sample_numerical_g2_neighborhood_val(
@@ -382,12 +390,8 @@ def main():
                        help='Path to G2 test dataset')
     parser.add_argument('--cy-data-dir', type=str, default='./samples/cy_data',
                        help='Directory containing CY data')
-    parser.add_argument('--n-phi-psi', type=int, default=None,
-                       help='Number of points for φ∧ψ check (default: all)')
-    parser.add_argument('--n-derivatives', type=int, default=None,
-                       help='Number of points for dψ and dφ checks (default: all)')
-    parser.add_argument('--start-idx', type=int, default=0,
-                       help='Starting index in dataset')
+    parser.add_argument('--n-points', type=int, default=None,
+                       help='Number of points for all identity checks (default: all, or random sample if specified)')
     parser.add_argument('--epsilon', type=float, default=1e-12,
                        help='Epsilon for numerical derivative')
     parser.add_argument('--rotation-epsilon', type=float, default=1e-12,
@@ -458,15 +462,14 @@ def main():
     fmodel, BASIS, cy_data = load_cy_model(cy_run_number, args.cy_data_dir, script_dir)
     
     # Check 1: φ ∧ ψ = 7·Vol (using model predictions)
-    n_phi_psi = len(g2_data['phis']) - args.start_idx if args.n_phi_psi is None else args.n_phi_psi
-    vals_phi_psi = check_phi_wedge_psi(g2_data, g2_models, n_phi_psi, args.start_idx)
+    n_points = len(g2_data['phis']) if args.n_points is None else args.n_points
+    vals_phi_psi = check_phi_wedge_psi(g2_data, g2_models, n_points)
     print_statistics("φ∧ψ/Vol (model predictions)", vals_phi_psi)
     plot_phi_wedge_psi(vals_phi_psi, g2_run_number, output_dir)
     
     # Check 2 & 3: dψ = 0 and dφ = ω² (using model predictions in neighborhoods)
-    n_derivatives = len(g2_data['base_points']) if args.n_derivatives is None else args.n_derivatives
     vals_dpsi, vals_dphi, vals_ratio = check_d_psi_and_d_phi(
-        g2_data, g2_models, fmodel, BASIS, n_derivatives,
+        g2_data, g2_models, fmodel, BASIS, n_points,
         args.epsilon, args.rotation_epsilon
     )
     

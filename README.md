@@ -8,6 +8,8 @@ Set up the Python environment following the instructions in [`environment/README
 
 ## Workflow
 
+**Interactive Alternative:** If you prefer not to use the command line, all scripts can be run from the Jupyter notebook [`run_interactive.ipynb`](./run_interactive.ipynb).
+
 ### 1. Train CY Metric Model
 Train a neural network to learn the Ricci-flat Kähler metric on the Calabi-Yau threefold using the [cymetric](https://github.com/pythoncymetric/cymetric) package:
 
