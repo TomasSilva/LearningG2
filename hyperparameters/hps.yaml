@@ -3,7 +3,7 @@
 ###############################################################################
 # Geometric set-up
 # Select whether to learn the G2-metric (true) or 3-form (false)
-metric: false
+metric: true
 
 # Specify which CY metric run to use for G2 sampling
 # null = use most recent CY model, int = use specific run number
@@ -12,10 +12,10 @@ cymetric_run_number: null
 ###############################################################################
 # Data set-up
 # Number of training samples to use (null = use all, int = random subset from g2_train.npz)
-num_samples: null
+num_samples: 1000 #null
 
 # Number of validation samples to use (null = use all, int = random subset from g2_val.npz)
-num_val_samples: null
+num_val_samples: 1000 #null
 
 ###############################################################################
 # Model set-up
@@ -52,7 +52,7 @@ l2_regularization: 0.0      # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
 ###############################################################################
 # Training set-up
 # Number of training epochs
-epochs: 300
+epochs: 2 #300
 
 # Batch size for training
 batch_size: 512

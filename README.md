@@ -1,18 +1,83 @@
 # Learning G2-Structure 3-forms
-First set up the python environment, following the instructions in [`environment/README.md`](./environment/README.md).  
 
-## Running:
-To train the CY metric model run in the CLI in this repo:  
-```
-python3 -m models.cy_model
-```
-...then to train a model of the $G_2$ 3-form, first specify the run hyperparameters in the `hyperparameters/hps.yaml` file, then run:  
-```
-python3 -m run
-```
-...which outputs a saved model into the `runs` folder.  
+Neural network approach to learning G2 structures on Calabi-Yau Links. The package trains models to predict the defining 3-form φ and associated metric on the total space of the Link, enabling efficient computation of G2 geometry.
 
-## BibTeX Citation:
-``` 
+## Setup
+
+Set up the Python environment following the instructions in [`environment/README.md`](./environment/README.md).
+
+## Workflow
+
+### 1. Train CY Metric Model
+Train a neural network to learn the Ricci-flat Kähler metric on the Calabi-Yau threefold using the [cymetric](https://github.com/pythoncymetric/cymetric) package:
+
+```bash
+python run_cy.py
+```
+
+This generates training data for the quintic CY threefold and trains a model that outputs the Hermitian metric components. The trained model is saved to `models/cy_models/cy_metric_model_run{N}.keras`.
+
+### 2. Generate G2 Sample Data
+Create training data for G2 structure learning by sampling points on the CY and computing the analytical G2 forms:
+
+```bash
+python sampling.py --n-points 5000
+```
+
+This produces datasets in `samples/link_data/` containing:
+- Base points and link points on the CY
+- Analytically computed φ (3-form) and ψ (4-form)  
+- G2 metrics and local Reeb vector (eta) components
+- CY base patch coordinate indices for each point
+
+### 3. Train G2 Models
+Train neural networks to predict the 3-form and G2 metric. Edit `hyperparameters/hps.yaml` to configure training parameters, then run:
+
+```bash
+# Train 3-form predictor
+python run_g2.py --task 3form
+
+# Train G2 metric predictor
+python run_g2.py --task metric
+```
+
+Models are saved to `models/link_models/3form_run{N}.keras` and `metric_run{N}.keras`. The hyperparameters file controls:
+- Network architecture (layers, units, activation)
+- Training parameters (epochs, batch size, learning rate)
+- Data splits and validation settings
+
+### 4. Validate Models
+Check that learned models satisfy the G2 structure identities: φ∧ψ = 7·Vol(g), dψ = 0, and dφ = ω².
+ 
+```bash
+# Check Kählerity of learned CY metric (dω = 0)
+python analysis/cy_kahlerity.py --cy-run-number 1
+
+# Check G2 identities using analytical construction
+python analysis/g2_identities_analytic.py --cy-run-number 1
+
+# Check G2 identities using trained model predictions
+python analysis/g2_identities_model.py --cy-run-number 1 --g2-run-number 1
+```
+
+All scripts output statistics and save diagnostic plots to `plots/` directory.
+
+## Run Numbering System
+
+All training scripts use an automatic run numbering system to organize experiments:
+
+- Each training run is assigned an incrementing integer: run 1, run 2, run 3, etc.
+- Run numbers are detected automatically from existing model files in the relevant save directory
+- Scripts can load specific runs using `--cy-run-number` or `--g2-run-number` arguments
+- Without specifying a run number, scripts auto-detect and use the most recent run
+- This enables easy experiment tracking and comparison without manual file management
+
+## References
+
+Based on numerical exterior derivative methods from [arXiv:2510.00999](https://arxiv.org/abs/2510.00999).
+
+## BibTeX Citation
+
+```
 raise NotImplementedError("Paper yet to be published.")
 ```

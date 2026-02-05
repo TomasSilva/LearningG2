@@ -191,3 +191,200 @@ def numerical_d(k_form_neighborhood_vals, epsilon=1e-12):
     
     else:
         raise ValueError(f"Invalid k-form dimension: k={k}")
+
+
+def sample_numerical_g2_neighborhood_val(sampler, point, epsilon=1e-12, 
+                                        find_max_dQ_coords_fn=None, 
+                                        global_rotation_epsilon=1e-12):
+    """
+    Sample numerical values of a G2 form at a neighborhood of a point on the link R^7.
+    
+    This version includes an additional 7th direction for global phase rotation.
+    
+    Parameters
+    ----------
+    sampler : callable
+        Function to sample the G2 form value at a point
+    point : ndarray, shape (10,)
+        Point in R^10 (real representation of CY coordinates)
+    epsilon : float
+        Distance for local coordinate perturbations
+    find_max_dQ_coords_fn : callable, optional
+        Function to find max |dQ/dz| coordinate
+    global_rotation_epsilon : float
+        Epsilon for global phase rotation
+        
+    Returns
+    -------
+    dict
+        7-dimensional dictionary with keys '0' to '7', where '0' is the center point,
+        '1' to '6' are the ±epsilon * canonical basis vectors in reduced coordinates,
+        and '7' is for ±global_rotation_epsilon phase rotation
+    """
+    point_cc = point[0:5] + 1.j*point[5:]
+    
+    # Find coordinates to drop
+    if find_max_dQ_coords_fn is not None:
+        drop_max = int(find_max_dQ_coords_fn(point_cc))
+    else:
+        drop_max = int(np.argmax(np.abs(point_cc - 1)))
+    
+    drop_one = int(np.argmin(np.abs(point_cc - 1)))
+    
+    # Reduced coordinates
+    p_cc = np.delete(point_cc, [drop_max, drop_one])
+    p = np.concatenate([p_cc.real, p_cc.imag])
+    
+    # Generate directions in 6D reduced space
+    directions = [np.array(np.eye(6, dtype=float)[i]) for i in range(6)]
+    
+    # Rotated versions for 7th direction
+    X_rotated_plus = point_cc * np.exp(1j * global_rotation_epsilon)
+    aux_one = int(np.argmin(np.abs(X_rotated_plus - 1)))
+    X_rotated_plus = X_rotated_plus / X_rotated_plus[aux_one]
+    X_rotated_plus[aux_one] = 1.0
+    X_rotated_plus = np.concatenate([X_rotated_plus.real, X_rotated_plus.imag])
+    
+    X_rotated_minus = point_cc * np.exp(-1j * global_rotation_epsilon)
+    aux_one = int(np.argmin(np.abs(X_rotated_minus - 1)))
+    X_rotated_minus = X_rotated_minus / X_rotated_minus[aux_one]
+    X_rotated_minus[aux_one] = 1.0
+    X_rotated_minus = np.concatenate([X_rotated_minus.real, X_rotated_minus.imag])
+    
+    # Sample at all positions
+    v0 = sampler(quintic_solver(p, drop_max, drop_one)[0])
+    v1p = sampler(quintic_solver(p + epsilon*directions[0], drop_max, drop_one)[0])
+    v1m = sampler(quintic_solver(p - epsilon*directions[0], drop_max, drop_one)[0])
+    v2p = sampler(quintic_solver(p + epsilon*directions[1], drop_max, drop_one)[0])
+    v2m = sampler(quintic_solver(p - epsilon*directions[1], drop_max, drop_one)[0])
+    v3p = sampler(quintic_solver(p + epsilon*directions[2], drop_max, drop_one)[0])
+    v3m = sampler(quintic_solver(p - epsilon*directions[2], drop_max, drop_one)[0])
+    v4p = sampler(quintic_solver(p + epsilon*directions[3], drop_max, drop_one)[0])
+    v4m = sampler(quintic_solver(p - epsilon*directions[3], drop_max, drop_one)[0])
+    v5p = sampler(quintic_solver(p + epsilon*directions[4], drop_max, drop_one)[0])
+    v5m = sampler(quintic_solver(p - epsilon*directions[4], drop_max, drop_one)[0])
+    v6p = sampler(quintic_solver(p + epsilon*directions[5], drop_max, drop_one)[0])
+    v6m = sampler(quintic_solver(p - epsilon*directions[5], drop_max, drop_one)[0])
+    v7p = sampler(X_rotated_plus)
+    v7m = sampler(X_rotated_minus)
+    
+    values = {
+        "0": [v0],
+        "1": [v1m, v1p],
+        "2": [v2m, v2p],
+        "3": [v3m, v3p], 
+        "4": [v4m, v4p], 
+        "5": [v5m, v5p], 
+        "6": [v6m, v6p],
+        "7": [v7m, v7p]
+    }
+    
+    return values
+
+
+def numerical_d_g2(k_form_neighborhood_vals, epsilon=1e-12):
+    """
+    Compute the numerical exterior derivative for G2 forms on R^7 (including rotation direction).
+    
+    Supports 0-forms through 4-forms on the 7-dimensional link manifold.
+    
+    Parameters
+    ----------
+    k_form_neighborhood_vals : dict
+        Dictionary of neighborhood values (keys '0' to '7')
+    epsilon : float
+        Small value for derivative approximation
+        
+    Returns
+    -------
+    ndarray
+        Numerical exterior derivative of the k-form
+    """
+    k = len(k_form_neighborhood_vals["0"][0].shape)
+    
+    # 0-form (scalar field)
+    if k == 0: 
+        dw = np.zeros(7)
+        for i in range(7):
+            dw[i] = (1/(2*epsilon)) * (k_form_neighborhood_vals[str(i+1)][1] - 
+                                       k_form_neighborhood_vals[str(i+1)][0])
+        return dw
+    
+    # 1-form
+    elif k == 1:
+        dw = np.zeros((7, 7))
+        for i in range(7):
+            for j in range(7):
+                if i != j:
+                    dw[i, j] = (1/(2*epsilon)) * (
+                        k_form_neighborhood_vals[str(j+1)][0][i] +
+                        k_form_neighborhood_vals[str(i+1)][1][j] -
+                        k_form_neighborhood_vals[str(j+1)][1][i] -
+                        k_form_neighborhood_vals[str(i+1)][0][j]
+                    )
+        return dw
+    
+    # 2-form
+    elif k == 2:
+        dw = np.zeros((7, 7, 7))
+        for i in range(7):
+            for j in range(7):
+                for k_idx in range(7):
+                    if i != j and j != k_idx and i != k_idx:
+                        dw[i, j, k_idx] = (1/(2*epsilon)) * (
+                            +k_form_neighborhood_vals[str(i+1)][1][j, k_idx] -
+                            k_form_neighborhood_vals[str(i+1)][0][j, k_idx] -
+                            k_form_neighborhood_vals[str(j+1)][1][i, k_idx] +
+                            k_form_neighborhood_vals[str(j+1)][0][i, k_idx] +
+                            k_form_neighborhood_vals[str(k_idx+1)][1][i, j] -
+                            k_form_neighborhood_vals[str(k_idx+1)][0][i, j]
+                        )
+        return dw
+    
+    # 3-form
+    elif k == 3:
+        dw = np.zeros((7, 7, 7, 7))
+        for i in range(7):
+            for j in range(7):
+                for k_idx in range(7):
+                    for l in range(7):
+                        if (i != j and j != k_idx and k_idx != l and 
+                            i != k_idx and i != l and j != l):
+                            dw[i, j, k_idx, l] = (1/(2*epsilon)) * (
+                                +k_form_neighborhood_vals[str(i+1)][1][j, k_idx, l] -
+                                k_form_neighborhood_vals[str(i+1)][0][j, k_idx, l] -
+                                k_form_neighborhood_vals[str(j+1)][1][i, k_idx, l] +
+                                k_form_neighborhood_vals[str(j+1)][0][i, k_idx, l] +
+                                k_form_neighborhood_vals[str(k_idx+1)][1][i, j, l] -
+                                k_form_neighborhood_vals[str(k_idx+1)][0][i, j, l] -
+                                k_form_neighborhood_vals[str(l+1)][1][i, j, k_idx] +
+                                k_form_neighborhood_vals[str(l+1)][0][i, j, k_idx]
+                            )
+        return dw
+    
+    # 4-form
+    elif k == 4:
+        dw = np.zeros((7, 7, 7, 7, 7))
+        for i in range(7):
+            for j in range(7):
+                for k_idx in range(7):
+                    for l in range(7):
+                        for m in range(7):
+                            if (i != j and j != k_idx and k_idx != l and l != m and 
+                                i != k_idx and i != l and i != m and j != l and j != m and k_idx != m):
+                                dw[i, j, k_idx, l, m] = (1/(2*epsilon)) * (
+                                    +k_form_neighborhood_vals[str(i+1)][1][j, k_idx, l, m] -
+                                    k_form_neighborhood_vals[str(i+1)][0][j, k_idx, l, m] -
+                                    k_form_neighborhood_vals[str(j+1)][1][i, k_idx, l, m] +
+                                    k_form_neighborhood_vals[str(j+1)][0][i, k_idx, l, m] +
+                                    k_form_neighborhood_vals[str(k_idx+1)][1][i, j, l, m] -
+                                    k_form_neighborhood_vals[str(k_idx+1)][0][i, j, l, m] -
+                                    k_form_neighborhood_vals[str(l+1)][1][i, j, k_idx, m] +
+                                    k_form_neighborhood_vals[str(l+1)][0][i, j, k_idx, m] +
+                                    k_form_neighborhood_vals[str(m+1)][1][i, j, k_idx, l] -
+                                    k_form_neighborhood_vals[str(m+1)][0][i, j, k_idx, l]
+                                )
+        return dw
+    
+    else:
+        raise ValueError(f"Numerical exterior derivative for {k}-forms not supported for k={k}")

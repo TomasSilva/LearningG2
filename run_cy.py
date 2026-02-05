@@ -76,6 +76,9 @@ from cymetric.models.callbacks import (
 from cymetric.models.models import MultFSModel
 from cymetric.models.helper import prepare_basis, train_model
 
+# Import utilities
+from analysis.utils import get_most_recent_cy_run_number
+
 
 def get_next_cy_run_number(save_dir='./models/cy_models'):
     """Find the next available run number for CY models.
@@ -111,41 +114,6 @@ def get_next_cy_run_number(save_dir='./models/cy_models'):
     
     # Return next number
     return max(run_numbers) + 1 if run_numbers else 1
-
-
-def get_most_recent_cy_run_number(save_dir='./models/cy_models'):
-    """Find the most recent run number for CY models.
-    
-    Parameters
-    ----------
-    save_dir : str or Path
-        Directory containing CY model files
-        
-    Returns
-    -------
-    int or None
-        Most recent run number, or None if no runs exist
-    """
-    save_dir = Path(save_dir)
-    if not save_dir.exists():
-        return None
-    
-    # Find all existing model files
-    pattern = str(save_dir / "cy_metric_model_run*.keras")
-    existing_files = glob.glob(pattern)
-    
-    if not existing_files:
-        return None
-    
-    # Extract run numbers from filenames
-    run_numbers = []
-    for filepath in existing_files:
-        filename = Path(filepath).stem
-        match = re.search(r"cy_metric_model_run(\d+)", filename)
-        if match:
-            run_numbers.append(int(match.group(1)))
-    
-    return max(run_numbers) if run_numbers else None
 
 
 def generate_training_data(n_points=N_POINTS, output_dir=DATA_DIR, 

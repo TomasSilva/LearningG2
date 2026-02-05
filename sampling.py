@@ -58,40 +58,8 @@ from cymetric.pointgen.pointgen import PointGenerator
 from cymetric.models.helper import prepare_basis
 from cymetric.models.models import MultFSModel
 
-
-def get_most_recent_cy_run_number(model_dir='./models/cy_models'):
-    """Find the most recent run number for CY models.
-    
-    Parameters
-    ----------
-    model_dir : str or Path
-        Directory containing CY model files
-        
-    Returns
-    -------
-    int or None
-        Most recent run number, or None if no runs exist
-    """
-    model_dir = pathlib.Path(model_dir)
-    if not model_dir.exists():
-        return None
-    
-    # Find all existing model files
-    pattern = str(model_dir / "cy_metric_model_run*.keras")
-    existing_files = glob.glob(pattern)
-    
-    if not existing_files:
-        return None
-    
-    # Extract run numbers from filenames
-    run_numbers = []
-    for filepath in existing_files:
-        filename = pathlib.Path(filepath).stem
-        match = re.search(r"cy_metric_model_run(\d+)", filename)
-        if match:
-            run_numbers.append(int(match.group(1)))
-    
-    return max(run_numbers) if run_numbers else None
+# Import utilities
+from analysis.utils import get_most_recent_cy_run_number
 
 
 def oriented_3form_components(T):

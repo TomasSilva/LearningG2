@@ -15,7 +15,7 @@ import itertools
 PROJECT_ROOT = Path(__file__).parent.parent
 PLOTS_DIR = PROJECT_ROOT / "plots"
 RUNS_DIR = PROJECT_ROOT / "runs"
-DATA_PATH = PROJECT_ROOT / "samples" / "link_data" / "g2_dataset.npz"
+DATA_PATH = PROJECT_ROOT / "samples" / "link_data" / "g2_test.npz"
 
 # Import compression functions
 sys.path.insert(0, str(PROJECT_ROOT))
