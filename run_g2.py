@@ -121,6 +121,27 @@ def main():
     # Load and subsample training data
     print(f"Loading training data from {train_data_path}...")
     train_data = np.load(train_data_path)
+    
+    # Extract cy_run_number from training data if available
+    dataset_cy_run = None
+    if 'cy_run_number' in train_data.files:
+        dataset_cy_run = int(train_data['cy_run_number'][0])
+        print(f"Training data was generated using CY model run {dataset_cy_run}")
+    
+    # Check cymetric_run_number from hps.yaml
+    hps_cy_run = hps.get('cymetric_run_number', None)
+    if hps_cy_run is not None:
+        print(f"Hyperparameters specify CY model run {hps_cy_run}")
+        
+        # Warn if mismatch
+        if dataset_cy_run is not None and hps_cy_run != dataset_cy_run:
+            print("=" * 80)
+            print("WARNING: CY model run number mismatch!")
+            print(f"  Dataset was generated with CY run {dataset_cy_run}")
+            print(f"  But hps.yaml specifies CY run {hps_cy_run}")
+            print("  This may lead to inconsistent results.")
+            print("=" * 80)
+    
     num_samples = hps.get('num_samples', None)
     
     if num_samples is not None and num_samples < len(train_data['phis']):

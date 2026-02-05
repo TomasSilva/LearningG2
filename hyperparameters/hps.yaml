@@ -5,6 +5,10 @@
 # Select whether to learn the G2-metric (true) or 3-form (false)
 metric: false
 
+# Specify which CY metric run to use for G2 sampling
+# null = use most recent CY model, int = use specific run number
+cymetric_run_number: null
+
 ###############################################################################
 # Data set-up
 # Number of training samples to use (null = use all, int = random subset from g2_train.npz)

@@ -139,26 +139,6 @@ def holomorphic_volume_real_imag(c):
 
 ###########################################################################
 # Functions related to the G2-structure
-# def compute_gG2(G2_val):
-#     # TODO: this function must be vectorized!
-#     # Note that wedge_product is very slow
-#     """
-#     Compute the gG2 metric from the G2 structure 3-form.
-#     See: https://arxiv.org/pdf/math/0702077 EQ (2.3)
-#     """
-#     B = np.zeros((7, 7))
-#     for i in range(7):
-#         for j in range(7):
-#             if i <= j:  # avoid double counting by only computing upper triangle       
-#                 B[i,j] = wedge(G2_val[i,:,:], wedge(G2_val[j,:,:], G2_val))[0,1,2,3,4,5,6]
-#     # Make B symmetric
-#     B = B + B.T - np.diag(B.diagonal())             
-#     detB = np.linalg.det(B)
-#     factor = (1 / pow(36, 1 / 9)) * (1 / pow(detB, 1 / 9))
-#     gG2 = factor * B  
-    
-#     return gG2
-
 
 @lru_cache(None)
 def levi_civita_7(dtype=np.float64):
@@ -195,6 +175,4 @@ def compute_gG2(phi, tol_eig=1e-12):
         g = -g
 
     return g
-
-
 

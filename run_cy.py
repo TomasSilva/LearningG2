@@ -13,6 +13,8 @@ import yaml
 import argparse
 import tensorflow as tf
 from pathlib import Path
+import glob
+import re
 
 # ============================================================================
 # HYPERPARAMETERS - Edit these for easy customization
@@ -73,6 +75,77 @@ from cymetric.models.callbacks import (
 )
 from cymetric.models.models import MultFSModel
 from cymetric.models.helper import prepare_basis, train_model
+
+
+def get_next_cy_run_number(save_dir='./models/cy_models'):
+    """Find the next available run number for CY models.
+    
+    Parameters
+    ----------
+    save_dir : str or Path
+        Directory containing CY model files
+        
+    Returns
+    -------
+    int
+        Next available run number
+    """
+    save_dir = Path(save_dir)
+    if not save_dir.exists():
+        return 1
+    
+    # Find all existing model files
+    pattern = str(save_dir / "cy_metric_model_run*.keras")
+    existing_files = glob.glob(pattern)
+    
+    if not existing_files:
+        return 1
+    
+    # Extract run numbers from filenames
+    run_numbers = []
+    for filepath in existing_files:
+        filename = Path(filepath).stem  # Gets filename without extension
+        match = re.search(r"cy_metric_model_run(\d+)", filename)
+        if match:
+            run_numbers.append(int(match.group(1)))
+    
+    # Return next number
+    return max(run_numbers) + 1 if run_numbers else 1
+
+
+def get_most_recent_cy_run_number(save_dir='./models/cy_models'):
+    """Find the most recent run number for CY models.
+    
+    Parameters
+    ----------
+    save_dir : str or Path
+        Directory containing CY model files
+        
+    Returns
+    -------
+    int or None
+        Most recent run number, or None if no runs exist
+    """
+    save_dir = Path(save_dir)
+    if not save_dir.exists():
+        return None
+    
+    # Find all existing model files
+    pattern = str(save_dir / "cy_metric_model_run*.keras")
+    existing_files = glob.glob(pattern)
+    
+    if not existing_files:
+        return None
+    
+    # Extract run numbers from filenames
+    run_numbers = []
+    for filepath in existing_files:
+        filename = Path(filepath).stem
+        match = re.search(r"cy_metric_model_run(\d+)", filename)
+        if match:
+            run_numbers.append(int(match.group(1)))
+    
+    return max(run_numbers) if run_numbers else None
 
 
 def generate_training_data(n_points=N_POINTS, output_dir=DATA_DIR, 
@@ -207,7 +280,7 @@ def train_cy_metric(data, BASIS, geometry_config,
                     n_epochs=500, batch_sizes=None,
                     alpha=None, n_fold=3,
                     save_dir='./models/cy_models',
-                    model_name='cy_metric_model'):
+                    run_number=None):
     """
     Train the CY metric model.
     
@@ -235,8 +308,8 @@ def train_cy_metric(data, BASIS, geometry_config,
         Number of folds
     save_dir : str
         Directory to save trained model
-    model_name : str
-        Name for saved model
+    run_number : int or None
+        Run number for model naming. If None, automatically determine next number.
         
     Returns
     -------
@@ -244,11 +317,21 @@ def train_cy_metric(data, BASIS, geometry_config,
         Trained model
     history : dict
         Training history
+    run_number : int
+        Run number used for saving
     """
     if batch_sizes is None:
         batch_sizes = [64, 50000]
     if alpha is None:
         alpha = [1., 1., 1., 1., 1.]
+    
+    # Determine run number
+    if run_number is None:
+        run_number = get_next_cy_run_number(save_dir)
+    
+    model_name = f'cy_metric_model_run{run_number}'
+    
+    print(f"Training CY metric model - Run {run_number}")
     
     # Model dimensions
     # n_in is 2 * (ambient + 1) for complex coordinates in projective space
@@ -313,7 +396,7 @@ def train_cy_metric(data, BASIS, geometry_config,
         yaml.dump(config, f)
     print(f"Configuration saved to {config_path}")
     
-    return fmodel, training_history
+    return fmodel, training_history, run_number
 
 
 def main():
@@ -335,8 +418,8 @@ def main():
                        help=f'Directory for training data (default: {DATA_DIR})')
     parser.add_argument('--save-dir', type=str, default=SAVE_DIR,
                        help=f'Directory to save trained model (default: {SAVE_DIR})')
-    parser.add_argument('--model-name', type=str, default=MODEL_NAME,
-                       help=f'Name for saved model (default: {MODEL_NAME})')
+    parser.add_argument('--run-number', type=int, default=None,
+                       help='Run number for model naming (default: auto-increment)')
     
     args = parser.parse_args()
     
@@ -351,7 +434,7 @@ def main():
     )
     
     # Train model
-    fmodel, history = train_cy_metric(
+    fmodel, history, run_number = train_cy_metric(
         data=data,
         BASIS=BASIS,
         geometry_config=geometry_config,
@@ -363,11 +446,11 @@ def main():
         n_epochs=args.n_epochs,
         n_fold=args.n_fold,
         save_dir=args.save_dir,
-        model_name=args.model_name
+        run_number=args.run_number
     )
     
     print("\n" + "=" * 80)
-    print("Training complete!")
+    print(f"Training complete! CY model saved as run {run_number}")
     print("=" * 80)
 
 

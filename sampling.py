@@ -16,6 +16,8 @@ import os
 import yaml
 import pickle
 import itertools
+import glob
+import re
 from tqdm import tqdm
 from joblib import Parallel, delayed
 import tensorflow as tf
@@ -55,6 +57,41 @@ from geometry.wedge import wedge
 from cymetric.pointgen.pointgen import PointGenerator
 from cymetric.models.helper import prepare_basis
 from cymetric.models.models import MultFSModel
+
+
+def get_most_recent_cy_run_number(model_dir='./models/cy_models'):
+    """Find the most recent run number for CY models.
+    
+    Parameters
+    ----------
+    model_dir : str or Path
+        Directory containing CY model files
+        
+    Returns
+    -------
+    int or None
+        Most recent run number, or None if no runs exist
+    """
+    model_dir = pathlib.Path(model_dir)
+    if not model_dir.exists():
+        return None
+    
+    # Find all existing model files
+    pattern = str(model_dir / "cy_metric_model_run*.keras")
+    existing_files = glob.glob(pattern)
+    
+    if not existing_files:
+        return None
+    
+    # Extract run numbers from filenames
+    run_numbers = []
+    for filepath in existing_files:
+        filename = pathlib.Path(filepath).stem
+        match = re.search(r"cy_metric_model_run(\d+)", filename)
+        if match:
+            run_numbers.append(int(match.group(1)))
+    
+    return max(run_numbers) if run_numbers else None
 
 
 def oriented_3form_components(T):
@@ -266,12 +303,12 @@ def main():
     parser.add_argument('--cy-data-dir', type=str,
                        default='./samples/cy_data',
                        help='Directory containing CY training data')
-    parser.add_argument('--cy-model', type=str,
-                       default='./models/cy_models/cy_metric_model.keras',
-                       help='Path to trained CY metric model')
-    parser.add_argument('--cy-config', type=str,
-                       default='./models/cy_models/cy_metric_model_config.yaml',
-                       help='Path to CY model configuration file')
+    parser.add_argument('--cy-run-number', type=int, default=None,
+                       help='CY model run number to use (default: most recent)')
+    parser.add_argument('--cy-model', type=str, default=None,
+                       help='Path to trained CY metric model (overrides --cy-run-number)')
+    parser.add_argument('--cy-config', type=str, default=None,
+                       help='Path to CY model configuration file (overrides --cy-run-number)')
     parser.add_argument('--output-dir', type=str,
                        default='./samples/link_data',
                        help='Directory to save G2 dataset')
@@ -286,6 +323,38 @@ def main():
     print("G2 Structure Sampling")
     print("=" * 80)
     
+    # Determine CY run number
+    if args.cy_model is None and args.cy_config is None:
+        # Need to determine run number
+        if args.cy_run_number is None:
+            # Auto-detect most recent
+            cy_run_number = get_most_recent_cy_run_number('./models/cy_models')
+            if cy_run_number is None:
+                print("Error: No CY models found in ./models/cy_models/")
+                print("Please train a CY model first using run_cy.py")
+                sys.exit(1)
+            print(f"Auto-detected most recent CY model: run {cy_run_number}")
+        else:
+            cy_run_number = args.cy_run_number
+            print(f"Using specified CY model run: {cy_run_number}")
+        
+        # Construct model and config paths
+        cy_model_path = f'./models/cy_models/cy_metric_model_run{cy_run_number}.keras'
+        cy_config_path = f'./models/cy_models/cy_metric_model_run{cy_run_number}_config.yaml'
+    else:
+        # Use explicitly provided paths (backward compatibility)
+        cy_model_path = args.cy_model or './models/cy_models/cy_metric_model.keras'
+        cy_config_path = args.cy_config or './models/cy_models/cy_metric_model_config.yaml'
+        
+        # Try to extract run number from path
+        match = re.search(r'cy_metric_model_run(\d+)', cy_model_path)
+        if match:
+            cy_run_number = int(match.group(1))
+            print(f"Detected CY model run number from path: {cy_run_number}")
+        else:
+            cy_run_number = None
+            print("Warning: Could not detect run number from model path")
+    
     # Load CY data and basis
     cy_data_dir = pathlib.Path(args.cy_data_dir)
     data = np.load(cy_data_dir / 'dataset.npz')
@@ -295,7 +364,7 @@ def main():
     print(f"Loaded CY data from {cy_data_dir}")
     
     # Load model configuration
-    config_path = pathlib.Path(args.cy_config)
+    config_path = pathlib.Path(cy_config_path)
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
@@ -311,10 +380,10 @@ def main():
     n_out = config['n_out']
     
     # Load trained model
-    loaded_nn = tf.keras.models.load_model(args.cy_model)
+    loaded_nn = tf.keras.models.load_model(cy_model_path)
     fmodel = MultFSModel(loaded_nn, BASIS, alpha=alpha)
     
-    print(f"Loaded CY model from {args.cy_model}")
+    print(f"Loaded CY model from {cy_model_path}")
     print(f"Model architecture: {n_layers} layers x {n_hidden} units, activation={activation}")
     
     def compute_sample(point, rotation):
@@ -364,21 +433,31 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     dataset_path = output_dir / "g2_dataset.npz"
-    np.savez_compressed(
-        dataset_path,
-        base_points=base_points,
-        link_points=link_points,
-        rotations=rotations,
-        phis=phis,
-        psis=psis,
-        riemannian_metrics=riemannian_metrics,
-        g2_metrics=g2_metrics,
-        drop_maxs=drop_maxs,
-        drop_ones=drop_ones,
-        etas=etas
-    )
+    
+    # Create metadata dictionary
+    metadata_dict = {
+        'base_points': base_points,
+        'link_points': link_points,
+        'rotations': rotations,
+        'phis': phis,
+        'psis': psis,
+        'riemannian_metrics': riemannian_metrics,
+        'g2_metrics': g2_metrics,
+        'drop_maxs': drop_maxs,
+        'drop_ones': drop_ones,
+        'etas': etas
+    }
+    
+    # Add cy_run_number if available
+    if cy_run_number is not None:
+        # Store as scalar array so it's preserved in npz
+        metadata_dict['cy_run_number'] = np.array([cy_run_number])
+    
+    np.savez_compressed(dataset_path, **metadata_dict)
 
     print(f"\nSaved G2 dataset to {dataset_path}")
+    if cy_run_number is not None:
+        print(f"Dataset metadata: cy_run_number = {cy_run_number}")
     
     # Split into train/val/test
     data = np.load(dataset_path)
