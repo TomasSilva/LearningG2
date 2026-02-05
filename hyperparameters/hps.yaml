@@ -2,25 +2,21 @@
 
 ###############################################################################
 # Geometric set-up
-# Select whether to learn the G2-metric
+# Select whether to learn the G2-metric (true) or 3-form (false)
 metric: false
 
 ###############################################################################
 # Data set-up
-# Number of samples to generate for training
-num_samples: 100000  # Increased to reduce overfitting
+# Number of training samples to use (null = use all, int = random subset from g2_train.npz)
+num_samples: null
 
-# Target patch filter (optional)
-# Set to [one_idx, dropped_idx] to filter data to specific patch (e.g., [0, 1])
-# Set to null to use all patches (default behavior)
-target_patch: [0, 1] 
+# Number of validation samples to use (null = use all, int = random subset from g2_val.npz)
+num_val_samples: null
 
 ###############################################################################
 # Model set-up
-# Import a saved model instead of initiating a new one (null means randomly initialise)
-saved_model: false
-saved_model_path: ...
-# ...the below are ignored if `saved_model` is true and a model is imported
+# Path to a saved model to load and continue training (null means train from scratch)
+saved_model_path: null
 
 # Number of hidden units in each layer
 n_hidden: 256
@@ -34,53 +30,39 @@ activations: gelu
 # Whether to use bias terms in the neural network layers
 use_bias: true
 
-# Scale for the model parameter uniform initialisation
+# Scale for parameter initialization (uses uniform distribution [-scale, scale])
 parameter_initialisation_scale: 1.0
 
-# Dimension of the patch-index embedding layer
-embedding_dim: null
+# Huber loss parameter (set to null or inf to use standard MSE loss)
+# Recommended: null for MSE, 1.0 for robust training with outliers
+huber_delta: null
 
-# Huber loss parameter (set to null to use standard MSE loss)
-huber_delta: 1.0
-
-# Regularization parameters (disable for single patch - simpler problem)
+# Regularization parameters
 dropout_rate: 0.0           # Dropout rate (0.0 = no dropout, 0.1-0.3 typical)
-l2_regularization: 0.0001   # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
+l2_regularization: 0.0      # L2 weight decay (0.0 = none, 1e-5 to 1e-3 typical)
 
 ###############################################################################
 # Training set-up
 # Number of training epochs
 epochs: 300
 
-# Number of times to resample training data and continue training
-n_data_resamples: 10
-
 # Batch size for training
 batch_size: 512
 
 # Learning rate for the optimizer
 init_learning_rate: 0.001
-min_learning_rate: 0.0001
 
-# Weight applied to structurally zero components in weighted MSE loss
-# 1.0 = treat all components equally (standard MSE)
-# 0.0 = ignore zero components completely (focus only on non-zero components)
-# Values between 0 and 1 reduce but don't eliminate zero component contribution
-zero_component_weight: 0.0
+# Learning rate scheduler settings (ReduceLROnPlateau)
+lr_reduce_factor: 0.5       # Factor to reduce LR (new_lr = lr * factor)
+lr_reduce_patience: 8       # Number of epochs with no improvement before reducing LR
+min_learning_rate: 1.0e-6   # Minimum learning rate
 
-# Validation hyperparameters
-validate: true
-val_print: false
-num_val_samples: 5000 
-val_batch_size: 500
+# Early stopping settings
+early_stop_patience: 20     # Number of epochs with no improvement before stopping
 
-# Verbosity level for print logging (e.g., 0 for silent, 1 for progress messages)
+# Validation settings (uses samples/link_data/g2_val.npz file)
+validate: true              # Whether to use validation during training
+val_batch_size: 512         # Batch size for validation
+
+# Verbosity level: 0 = silent, 1 = progress bar, 2 = one line per epoch
 verbosity: 1
-
-###############################################################################
-#Logging set-up
-###where to save the models too
-
-# Whether to print a breakdown of individual loss terms with each training step
-print_losses: false
-print_interval: 1   
