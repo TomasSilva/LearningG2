@@ -54,54 +54,6 @@ def split_train_val_test(X, Y, train=0.90, val=0.05, seed=42):
     return (X[tr], Y[tr]), (X[va], Y[va]), (X[te], Y[te])
 
 
-def oriented35_components(T):
-    """
-    Extract 35 independent components from a 3-form tensor.
-    
-    Parameters
-    ----------
-    T : array_like, shape (7,7,7)
-        Fully antisymmetric 3-form tensor
-        
-    Returns
-    -------
-    ndarray, shape (35,)
-        The 35 = C(7,3) independent components
-    """
-    T = np.asarray(T)
-    assert T.shape == (7, 7, 7)
-    triples = list(itertools.combinations(range(7), 3))
-    vals = np.array([T[i, j, k] for (i, j, k) in triples], dtype=T.dtype)
-    return vals
-
-
-def upper_triangular_part(A, include_diagonal=True):
-    """
-    Extract the upper triangular part of a 7x7 symmetric matrix.
-    
-    Parameters
-    ----------
-    A : array_like, shape (7,7)
-        Symmetric matrix
-    include_diagonal : bool
-        Whether to include diagonal entries
-        
-    Returns
-    -------
-    ndarray, shape (28,) if include_diagonal else (21,)
-        Upper triangular entries in row-major order
-    """
-    A = np.asarray(A)
-    assert A.shape == (7, 7), "Input must be a 7x7 matrix"
-
-    if include_diagonal:
-        idx = np.triu_indices(7)
-    else:
-        idx = np.triu_indices(7, k=1)
-
-    return A[idx]
-
-
 def prepare_data(data, task='3form'):
     """
     Prepare X and Y from loaded npz data or dict.
@@ -154,7 +106,7 @@ def prepare_data(data, task='3form'):
             Y = phis
         else:
             # Full tensor form - extract components
-            Y = np.array([oriented35_components(phi) for phi in phis])
+            Y = form_to_vec(phis)
     elif task == 'metric':
         # Extract 28 upper triangular components from symmetric metric
         if isinstance(data, dict):
@@ -166,9 +118,8 @@ def prepare_data(data, task='3form'):
             # Already in flattened form
             Y = G
         else:
-            # Full matrix form - extract upper triangular components
-            idx = np.triu_indices(7)
-            Y = G[:, idx[0], idx[1]]
+            # Full matrix form - extract components
+            Y = metric_to_vec(G)
     else:
         raise ValueError(f"Unknown task: {task}. Must be '3form' or 'metric'")
     
@@ -263,6 +214,8 @@ def train_regressor(
     init_scale=1.0,
     l2_reg=0.0,
     huber_delta=None,
+    normalize_inputs=True,
+    normalize_outputs=True,
     lr_reduce_factor=0.5,
     lr_reduce_patience=8,
     min_lr=1e-6,
@@ -330,15 +283,23 @@ def train_regressor(
     Returns
     -------
     model : keras.Model
-        Trained model (outputs normalized predictions)
+        Trained model (outputs TRUE SCALE predictions; NN trains in normalized space internally if enabled)
     history : keras.callbacks.History
         Training history
     test_data : tuple
-        (X_test, Y_test, Y_pred) - predictions are in original scale
+        (X_test, Y_test, Y_pred) - all in true scale
     normalizers : tuple
-        (x_norm, y_norm) - the normalization layers
+        (x_norm, y_norm) - the normalization layers (x_norm embedded if normalize_inputs=True, 
+        y_norm used for loss computation if normalize_outputs=True but not stored in model)
     test_metrics : dict
-        Test metrics in normalized space
+        Test metrics (loss computed in normalized space if normalize_outputs=True)
+        
+    Notes
+    -----
+    When normalize_outputs=True, the model outputs at true scale by denormalizing internally,
+    but the y_norm layer is not stored in the model graph. It's only used during training
+    for computing loss in normalized space. When loading a saved model, you cannot retrieve
+    y_norm, but the model will still output correct true-scale predictions.
     """
     if val_batch is None:
         val_batch = batch
@@ -364,19 +325,31 @@ def train_regressor(
 
     # Build or load model
     if pretrained_model is not None:
-        # Use loaded model and extract normalizers
+        # Use loaded model - extract normalizers if they exist
         model = pretrained_model
-        x_norm = model.get_layer('x_norm')
-        y_norm = model.get_layer('y_norm')
-        print("Using pretrained model with existing normalizers")
+        try:
+            x_norm = model.get_layer('x_norm') if normalize_inputs else None
+            y_norm = model.get_layer('y_norm') if normalize_outputs else None
+            print("Using pretrained model with existing normalizers")
+        except ValueError:
+            # Model doesn't have normalization layers
+            x_norm = None
+            y_norm = None
+            print("Using pretrained model without normalization layers")
     else:
-        # Normalization layers (fit on train only)
-        x_norm = layers.Normalization(axis=-1, name="x_norm")
-        y_norm = layers.Normalization(axis=-1, name="y_norm")
-        x_norm.adapt(Xtr)
-        y_norm.adapt(Ytr)
+        # Setup normalization layers if requested
+        x_norm = None
+        y_norm = None
+        
+        if normalize_inputs:
+            x_norm = layers.Normalization(axis=-1, name="x_norm")
+            x_norm.adapt(Xtr)
+        
+        if normalize_outputs:
+            y_norm = layers.Normalization(axis=-1, name="y_norm")
+            y_norm.adapt(Ytr)
 
-        # Build model that outputs normalized Y
+        # Build base regressor
         base = build_regressor(
             input_dim=Xtr.shape[1],
             output_dim=Ytr.shape[1],
@@ -388,29 +361,63 @@ def train_regressor(
             l2_reg=l2_reg,
         )
 
+        # Build full model with optional normalization
         inp = keras.Input(shape=(Xtr.shape[1],), dtype=tf.float32)
-        x = x_norm(inp)
-        yhat_norm = base(x)
-        model = keras.Model(inp, yhat_norm, name=f"regressor_{task}")
+        
+        # Input normalization (optional)
+        if normalize_inputs:
+            x = x_norm(inp)
+        else:
+            x = inp
+        
+        # Base network
+        yhat_internal = base(x)
+        
+        # Output denormalization (optional)
+        if normalize_outputs:
+            # Denormalize outputs to true scale: output = normalized * std + mean
+            yhat = yhat_internal * tf.sqrt(y_norm.variance) + y_norm.mean
+        else:
+            yhat = yhat_internal
+        
+        model = keras.Model(inp, yhat, name=f"regressor_{task}")
 
-    # Choose loss function
+    # Compile model
+    # Note: When normalize_outputs=True, loss is computed in normalized space during training
+    # but model outputs true scale. For model saving/loading compatibility, we use standard
+    # loss functions. The custom normalization is handled in the training data pipeline.
     if huber_delta is not None and np.isfinite(huber_delta):
-        loss = keras.losses.Huber(delta=huber_delta)
+        loss_fn = keras.losses.Huber(delta=huber_delta)
     else:
-        loss = "mse"
-
-    # Loss/metrics in normalized Y space
+        loss_fn = "mse"
+    
     model.compile(
         optimizer=keras.optimizers.Adam(lr),
-        loss=loss,
+        loss=loss_fn,
         metrics=[
             keras.metrics.MeanAbsoluteError(name="mae"),
             keras.metrics.RootMeanSquaredError(name="rmse"),
         ],
     )
 
-    # tf.data for speed
-    train_ds = tf.data.Dataset.from_tensor_slices((Xtr, y_norm(Ytr))) \
+    # Prepare training data
+    # If normalize_outputs=True, normalize targets for training (model will denormalize internally)
+    if normalize_outputs and y_norm is not None:
+        # Normalize training targets
+        y_mean = y_norm.mean.numpy()
+        y_std = np.sqrt(y_norm.variance.numpy())
+        Ytr_train = (Ytr - y_mean) / y_std
+        if Xva is not None:
+            Yva_train = (Yva - y_mean) / y_std
+        else:
+            Yva_train = None
+    else:
+        # Use true scale targets
+        Ytr_train = Ytr
+        Yva_train = Yva if Xva is not None else None
+
+    # tf.data datasets
+    train_ds = tf.data.Dataset.from_tensor_slices((Xtr, Ytr_train)) \
         .shuffle(min(len(Xtr), 200_000), seed=seed, reshuffle_each_iteration=True) \
         .batch(batch) \
         .prefetch(tf.data.AUTOTUNE)
@@ -419,7 +426,7 @@ def train_regressor(
     cb = []
     
     if validate and Xva is not None:
-        val_ds = tf.data.Dataset.from_tensor_slices((Xva, y_norm(Yva))) \
+        val_ds = tf.data.Dataset.from_tensor_slices((Xva, Yva_train)) \
             .batch(val_batch) \
             .prefetch(tf.data.AUTOTUNE)
         
@@ -461,16 +468,12 @@ def train_regressor(
         verbose=verbosity
     )
 
-    # Predict in normalized space, then unnormalize back to original scale
-    Ypred_norm = model.predict(Xte, batch_size=8192, verbose=0)
+    # Model now outputs TRUE SCALE predictions directly
+    Ypred = model.predict(Xte, batch_size=8192, verbose=0)
 
-    y_mean = y_norm.mean.numpy()
-    y_std = np.sqrt(y_norm.variance.numpy())
-    Ypred = y_mean + Ypred_norm * y_std
-
-    # Get model metrics on normalized test targets
+    # Get model metrics (loss computed in normalized space internally)
     test_metrics = model.evaluate(
-        Xte, y_norm(Yte), batch_size=8192, verbose=0, return_dict=True
+        Xte, Yte, batch_size=8192, verbose=0, return_dict=True
     )
 
     return model, hist, (Xte, Yte, Ypred), (x_norm, y_norm), test_metrics

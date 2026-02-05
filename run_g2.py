@@ -191,6 +191,10 @@ def main():
     # Verbosity
     verbosity = hps.get('verbosity', 1)
     
+    # Normalization settings
+    normalize_inputs = hps.get('normalize_inputs', True)
+    normalize_outputs = hps.get('normalize_outputs', True)
+    
     # Architecture hyperparameters
     n_hidden = hps.get('n_hidden', 512)
     n_layers = hps.get('n_layers', 4)
@@ -203,6 +207,8 @@ def main():
     print(f"  Init scale: {init_scale}")
     print(f"  Dropout: {dropout}")
     print(f"  L2 regularization: {l2_reg}")
+    print(f"  Normalize inputs: {normalize_inputs}")
+    print(f"  Normalize outputs: {normalize_outputs}")
     print(f"  Huber delta: {huber_delta}")
     print(f"  Batch size: {batch_size}")
     print(f"  Val batch size: {val_batch_size}")
@@ -271,6 +277,8 @@ def main():
         init_scale=init_scale,
         l2_reg=l2_reg,
         huber_delta=huber_delta,
+        normalize_inputs=normalize_inputs,
+        normalize_outputs=normalize_outputs,
         lr_reduce_factor=lr_reduce_factor,
         lr_reduce_patience=lr_reduce_patience,
         min_lr=min_lr,

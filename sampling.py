@@ -24,6 +24,9 @@ import tensorflow as tf
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Import geometry compression functions
+from geometry.compression import metric_to_vec
+
 # Setup path for cymetric package
 _parent_dir = SCRIPT_DIR.parent
 _cymetric_dir = _parent_dir / "cymetric"
@@ -91,33 +94,6 @@ def oriented_4form_components(T):
     indices = list(itertools.combinations(range(7), 4))
     vals = np.array([T[i, j, k, l] for (i, j, k, l) in indices], dtype=T.dtype)
     return vals
-
-
-def upper_triangular_part_7x7(A, include_diagonal=True):
-    """
-    Extract the upper triangular part of a 7x7 matrix.
-
-    Parameters
-    ----------
-    A : array_like, shape (7, 7)
-        Input matrix.
-    include_diagonal : bool
-        Whether to include the diagonal entries.
-
-    Returns
-    -------
-    v : ndarray, shape (28,) if include_diagonal else (21,)
-        Upper triangular entries in row-major order.
-    """
-    A = np.asarray(A)
-    assert A.shape == (7, 7), "Input must be a 7x7 matrix"
-
-    if include_diagonal:
-        idx = np.triu_indices(7)
-    else:
-        idx = np.triu_indices(7, k=1)
-
-    return A[idx]
 
 
 def upper_triangular_part_6x6(A, include_diagonal=True):
@@ -275,7 +251,7 @@ def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         oriented_3form_components(g2),
         oriented_4form_components(star_g2),
         upper_triangular_part_6x6(riemannian_metric),
-        upper_triangular_part_7x7(g2_metric),
+        metric_to_vec(g2_metric),
         drop_max,
         drop_one,
         eta
@@ -333,9 +309,6 @@ def main():
     n_fold = config['n_fold']
     n_in = config['n_in']
     n_out = config['n_out']
-    
-    # Build model architecture (not used, but kept for reference)
-    # The loaded model already has the architecture embedded
     
     # Load trained model
     loaded_nn = tf.keras.models.load_model(args.cy_model)

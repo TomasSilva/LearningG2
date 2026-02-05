@@ -33,6 +33,10 @@ use_bias: true
 # Scale for parameter initialization (uses uniform distribution [-scale, scale])
 parameter_initialisation_scale: 1.0
 
+# Normalization settings
+normalize_inputs: true      # Whether to normalize inputs (recommended: true for stable training)
+normalize_outputs: true     # Whether to normalize outputs (recommended: true for stable training)
+
 # Huber loss parameter (set to null or inf to use standard MSE loss)
 # Recommended: null for MSE, 1.0 for robust training with outliers
 huber_delta: null
