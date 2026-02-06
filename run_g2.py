@@ -84,6 +84,12 @@ def main():
     parser.add_argument('--plots-dir', type=str,
                        default='./plots',
                        help='Directory to save plots')
+    parser.add_argument('--task', type=str, choices=['3form', 'metric'],
+                       default=None,
+                       help='Task to train (overrides hps.yaml setting)')
+    parser.add_argument('--n-epochs', type=int,
+                       default=None,
+                       help='Number of training epochs (overrides hps.yaml setting)')
     
     args = parser.parse_args()
     
@@ -113,9 +119,19 @@ def main():
     print("Loading hyperparameters...")
     hps = load_hyperparameters(hps_path)
     
-    # Determine task
-    task = 'metric' if hps.get('metric', False) else '3form'
-    print(f"Task: Learning G2 {task}")
+    # Override task from command line if provided
+    if args.task is not None:
+        task = args.task
+        print(f"Task (from command line): Learning G2 {task}")
+    else:
+        task = 'metric' if hps.get('metric', False) else '3form'
+        print(f"Task (from hps.yaml): Learning G2 {task}")
+    
+    # Override epochs from command line if provided
+    if args.n_epochs is not None:
+        hps['epochs'] = args.n_epochs
+        print(f"Epochs (from command line): {args.n_epochs}")
+    
     print()
     
     # Load and subsample training data

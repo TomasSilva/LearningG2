@@ -126,8 +126,6 @@ def plot_domega_norms(vals, dataset_name, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Saved plot to {save_path}")
-    else:
-        plt.show()
     
     plt.close()
 

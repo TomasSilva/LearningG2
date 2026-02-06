@@ -14,7 +14,7 @@ import itertools
 # Set up paths
 PROJECT_ROOT = Path(__file__).parent.parent
 PLOTS_DIR = PROJECT_ROOT / "plots"
-RUNS_DIR = PROJECT_ROOT / "runs"
+RUNS_DIR = PROJECT_ROOT / "models" / "link_models"
 DATA_PATH = PROJECT_ROOT / "samples" / "link_data" / "g2_test.npz"
 
 # Import compression functions
@@ -100,11 +100,15 @@ def plot_volume_comparison(data, save_path):
     else:
         g2_det = np.linalg.det(g2_metrics_data)
     
+    # Calculate Pearson correlation coefficient
+    pmcc = np.corrcoef(cy_det, g2_det)[0, 1]
+    
     plt.figure(figsize=(8, 6))
-    plt.plot(cy_det, g2_det, 'o', markersize=2)
+    plt.plot(cy_det, g2_det, 'o', markersize=2, label=f'PMCC = {pmcc:.4f}')
     plt.xlabel("Vol CY")
     plt.ylabel("Vol " + r"$G_2$")
     plt.title("Vol CY vs Vol G2")
+    plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')

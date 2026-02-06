@@ -536,7 +536,6 @@ def plot_history(hist, save_path=None):
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Saved loss plot to {save_path}")
     
-    plt.show()
     plt.close()
 
     # MAE/RMSE plots if present
@@ -559,7 +558,6 @@ def plot_history(hist, save_path=None):
                 plt.savefig(metric_path, dpi=150, bbox_inches='tight')
                 print(f"Saved {k} plot to {metric_path}")
             
-            plt.show()
             plt.close()
 
 
@@ -586,14 +584,17 @@ def plot_true_vs_pred(Y_true, Y_pred, n_points=30000, seed=0, save_path=None):
     yt = Y_true[idx].reshape(-1)
     yp = Y_pred[idx].reshape(-1)
 
+    # Calculate Pearson correlation coefficient
+    pmcc = np.corrcoef(yt, yp)[0, 1]
+
     plt.figure(figsize=(6, 6))
-    plt.scatter(yt, yp, s=2, alpha=0.25)
+    plt.scatter(yt, yp, s=2, alpha=0.25, label=f'PMCC = {pmcc:.4f}')
     lo = min(yt.min(), yp.min())
     hi = max(yt.max(), yp.max())
     plt.plot([lo, hi], [lo, hi], "r--", lw=1)
     plt.xlabel("True")
     plt.ylabel("Predicted")
-    plt.title("Predicted vs True Values")
+    plt.legend()
     plt.grid(True)
     plt.tight_layout()
     
@@ -603,5 +604,4 @@ def plot_true_vs_pred(Y_true, Y_pred, n_points=30000, seed=0, save_path=None):
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Saved prediction plot to {save_path}")
     
-    plt.show()
     plt.close()

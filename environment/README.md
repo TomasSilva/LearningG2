@@ -23,10 +23,8 @@ cd ..
 git clone https://github.com/ruehlef/cymetric.git
 cd LearningG2
 
-# 5. Build Cython extensions
-cd environment
-python setup.py build_ext --inplace
-cd ..
+# 5. Make bash script executable
+chmod +x run_all.sh
 ```
 
 ## Important Notes

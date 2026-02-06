@@ -171,9 +171,15 @@ def split_npz(data, train=0.9, val=0.05, test=0.05, seed=42):
 
     for k in data.files:
         arr = data[k]
-        train_data[k] = arr[idx_train]
-        val_data[k] = arr[idx_val]
-        test_data[k] = arr[idx_test]
+        # Skip metadata fields that shouldn't be split
+        if k == 'cy_run_number':
+            train_data[k] = arr
+            val_data[k] = arr
+            test_data[k] = arr
+        else:
+            train_data[k] = arr[idx_train]
+            val_data[k] = arr[idx_val]
+            test_data[k] = arr[idx_test]
 
     return train_data, val_data, test_data
 

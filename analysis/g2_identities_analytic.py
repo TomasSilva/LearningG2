@@ -207,24 +207,28 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     q_low, q_high = np.percentile(vals_dpsi, [1, 99])
     vals_filtered = vals_dpsi[(vals_dpsi >= q_low) & (vals_dpsi <= q_high)]
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    
     # Scatter plot
-    ax1.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
-    ax1.set_xlabel("Sample Index")
-    ax1.set_ylabel(r"$\|\mathrm{d}\psi\|$")
-    ax1.set_title(f"||dψ|| per Sample (Run {run_number})")
-    ax1.grid(True, alpha=0.3)
-    
-    # Histogram
-    ax2.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    ax2.set_xlabel(r"$\|\mathrm{d}\psi\|$")
-    ax2.set_ylabel("Count")
-    ax2.set_title(f"||dψ|| Distribution (1-99 percentile, Run {run_number})")
-    ax2.grid(True, alpha=0.3)
-    
+    plt.figure(figsize=(7, 5))
+    plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\|\mathrm{d}\psi\|$")
+    plt.title(f"||dψ|| per Sample (Run {run_number})")
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+    
+    # Histogram
+    plt.figure(figsize=(7, 5))
+    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+    plt.xlabel(r"$\|\mathrm{d}\psi\|$")
+    plt.ylabel("Count")
+    plt.title(f"||dψ|| Distribution (1-99 percentile, Run {run_number})")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dpsi_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved plot: {output_path}")
     plt.close()
@@ -236,24 +240,28 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     q_low, q_high = np.percentile(vals_dphi, [1, 99])
     vals_filtered = vals_dphi[(vals_dphi >= q_low) & (vals_dphi <= q_high)]
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    
     # Scatter plot
-    ax1.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
-    ax1.set_xlabel("Sample Index")
-    ax1.set_ylabel(r"$\|\mathrm{d}\varphi\|$")
-    ax1.set_title(f"||dφ|| per Sample (Run {run_number})")
-    ax1.grid(True, alpha=0.3)
-    
-    # Histogram
-    ax2.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    ax2.set_xlabel(r"$\|\mathrm{d}\varphi\|$")
-    ax2.set_ylabel("Count")
-    ax2.set_title(f"||dφ|| Distribution (1-99 percentile, Run {run_number})")
-    ax2.grid(True, alpha=0.3)
-    
+    plt.figure(figsize=(7, 5))
+    plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
+    plt.title(f"||dφ|| per Sample (Run {run_number})")
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+    
+    # Histogram
+    plt.figure(figsize=(7, 5))
+    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+    plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
+    plt.ylabel("Count")
+    plt.title(f"||dφ|| Distribution (1-99 percentile, Run {run_number})")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dphi_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved plot: {output_path}")
     plt.close()
@@ -265,28 +273,32 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     q_low, q_high = np.percentile(vals_ratio, [1, 99])
     vals_filtered = vals_ratio[(vals_ratio >= q_low) & (vals_ratio <= q_high)]
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    
     # Scatter plot
-    ax1.plot(vals_ratio, marker='.', linestyle='None', alpha=0.6)
-    ax1.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    ax1.set_xlabel("Sample Index")
-    ax1.set_ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    ax1.set_title(f"dφ = ω² Check: Ratio (Run {run_number})")
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Histogram
-    ax2.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    ax2.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    ax2.set_xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    ax2.set_ylabel("Count")
-    ax2.set_title(f"Ratio Distribution (1-99 percentile, Run {run_number})")
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
+    plt.figure(figsize=(7, 5))
+    plt.plot(vals_ratio, marker='.', linestyle='None', alpha=0.6)
+    plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.title(f"dφ = ω² Check: Ratio (Run {run_number})")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+    
+    # Histogram
+    plt.figure(figsize=(7, 5))
+    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+    plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
+    plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.ylabel("Count")
+    plt.title(f"Ratio Distribution (1-99 percentile, Run {run_number})")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"Saved plot: {output_path}")
     plt.close()
