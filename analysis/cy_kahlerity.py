@@ -110,7 +110,6 @@ def plot_domega_norms(vals, dataset_name, save_path=None):
     plt.plot(vals, 'o-', markersize=3, alpha=0.7)
     plt.xlabel("Data Index")
     plt.ylabel(r"$\|\mathsf{d}\omega\|$")
-    plt.title(f"Kählerity Check: {dataset_name}")
     plt.grid(True, alpha=0.3)
     
     # Add statistics

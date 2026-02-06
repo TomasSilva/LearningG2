@@ -190,7 +190,6 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
     plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
                 label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
     plt.ylim(6.5, 7.5)
-    plt.title(f"G2 Identity Check: φ∧ψ = 7·Vol (Run {run_number})")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -212,7 +211,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\psi\|$")
-    plt.title(f"||dψ|| per Sample (Run {run_number})")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_run{run_number}.png"
@@ -225,7 +223,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\psi\|$")
     plt.ylabel("Count")
-    plt.title(f"||dψ|| Distribution (1-99 percentile, Run {run_number})")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_run{run_number}_histogram.png"
@@ -245,7 +242,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.title(f"||dφ|| per Sample (Run {run_number})")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_run{run_number}.png"
@@ -258,7 +254,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
     plt.ylabel("Count")
-    plt.title(f"||dφ|| Distribution (1-99 percentile, Run {run_number})")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_run{run_number}_histogram.png"
@@ -279,7 +274,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    plt.title(f"dφ = ω² Check: Ratio (Run {run_number})")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -294,7 +288,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.ylabel("Count")
-    plt.title(f"Ratio Distribution (1-99 percentile, Run {run_number})")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()

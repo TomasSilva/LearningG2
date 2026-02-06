@@ -107,7 +107,6 @@ def plot_volume_comparison(data, save_path):
     plt.plot(cy_det, g2_det, 'o', markersize=2, label=f'PMCC = {pmcc:.4f}')
     plt.xlabel("Vol CY")
     plt.ylabel("Vol " + r"$G_2$")
-    plt.title("Vol CY vs Vol G2")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
