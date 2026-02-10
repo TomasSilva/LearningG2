@@ -388,6 +388,20 @@ def main():
         Y_test_expanded[:, psi_nonzero_indices] = Y_test
         Y_test = Y_test_expanded
         
+        # Also expand normalization stats if they exist
+        if norms[1] is not None:
+            y_mean_23 = norms[1].mean.numpy()
+            y_std_23 = np.sqrt(norms[1].variance.numpy())
+            
+            y_mean_35 = np.zeros((1, 35))
+            y_mean_35[:, psi_nonzero_indices] = y_mean_23
+            
+            y_std_35 = np.ones((1, 35))  # Use 1 for zero components to avoid division issues
+            y_std_35[:, psi_nonzero_indices] = y_std_23
+            
+            # Store expanded versions for later use
+            norms = (norms[0], (y_mean_35, y_std_35))
+        
         # Save the index mapping for later use
         index_map_path = str(model_path).replace('.keras', '_index_map.npz')
         np.savez(
@@ -425,8 +439,12 @@ def main():
     # Normalize predictions and targets if y_norm was used
     x_norm, y_norm = norms
     if y_norm is not None:
-        y_mean = y_norm.mean.numpy()
-        y_std = np.sqrt(y_norm.variance.numpy())
+        # Handle both TensorFlow normalization layer and expanded tuple format
+        if isinstance(y_norm, tuple):
+            y_mean, y_std = y_norm
+        else:
+            y_mean = y_norm.mean.numpy()
+            y_std = np.sqrt(y_norm.variance.numpy())
         Y_test_norm = (Y_test - y_mean) / y_std
         Y_pred_norm = (Y_pred - y_mean) / y_std
         print("Plotting predictions at normalized scale...")

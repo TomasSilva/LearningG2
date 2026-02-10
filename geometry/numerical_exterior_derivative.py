@@ -195,7 +195,8 @@ def numerical_d(k_form_neighborhood_vals, epsilon=1e-12):
 
 def sample_numerical_g2_neighborhood_val(sampler, point, epsilon=1e-12, 
                                         find_max_dQ_coords_fn=None, 
-                                        global_rotation_epsilon=1e-12):
+                                        global_rotation_epsilon=1e-12,
+                                        drop_max=None, drop_one=None):
     """
     Sample numerical values of a G2 form at a neighborhood of a point on the link R^7.
     
@@ -213,6 +214,10 @@ def sample_numerical_g2_neighborhood_val(sampler, point, epsilon=1e-12,
         Function to find max |dQ/dz| coordinate
     global_rotation_epsilon : float
         Epsilon for global phase rotation
+    drop_max : int, optional
+        Index of coordinate to drop (if None, will be computed)
+    drop_one : int, optional
+        Index of coordinate to normalize to 1 (if None, will be computed)
         
     Returns
     -------
@@ -223,13 +228,15 @@ def sample_numerical_g2_neighborhood_val(sampler, point, epsilon=1e-12,
     """
     point_cc = point[0:5] + 1.j*point[5:]
     
-    # Find coordinates to drop
-    if find_max_dQ_coords_fn is not None:
-        drop_max = int(find_max_dQ_coords_fn(point_cc))
-    else:
-        drop_max = int(np.argmax(np.abs(point_cc - 1)))
+    # Find coordinates to drop (use provided values if available)
+    if drop_max is None:
+        if find_max_dQ_coords_fn is not None:
+            drop_max = int(find_max_dQ_coords_fn(point_cc))
+        else:
+            drop_max = int(np.argmax(np.abs(point_cc - 1)))
     
-    drop_one = int(np.argmin(np.abs(point_cc - 1)))
+    if drop_one is None:
+        drop_one = int(np.argmin(np.abs(point_cc - 1)))
     
     # Reduced coordinates
     p_cc = np.delete(point_cc, [drop_max, drop_one])

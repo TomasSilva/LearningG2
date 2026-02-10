@@ -307,7 +307,7 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
         return
     
     plt.figure(figsize=(10, 6))
-    plt.plot(vals, marker='.', linestyle='-', alpha=0.7)
+    plt.scatter(range(len(vals)), vals, marker='.', alpha=0.7)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
     plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
@@ -323,6 +323,10 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
 
 def plot_dphi_ratio(vals_ratio, run_number, output_dir):
     """Plot ||dφ|| / ||ω²|| ratio distribution."""
+    if len(vals_ratio) == 0:
+        print("Warning: No valid dphi/omega ratio values to plot")
+        return
+    
     q_low, q_high = np.percentile(vals_ratio, [1, 99])
     vals_filtered = vals_ratio[(vals_ratio >= q_low) & (vals_ratio <= q_high)]
     
