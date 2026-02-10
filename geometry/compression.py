@@ -10,12 +10,14 @@ from itertools import permutations, combinations
 def form_to_vec(tensor):
     """
     Extract unique components from a form tensor (antisymmetric tensor).
-    Works on single tensor or batch.
+    Works on single tensor or batch, for any rank.
     
     Parameters
     ----------
-    tensor : array_like, shape (D, D, ..., D) with rank dimensions or (B, D, D, ..., D)
+    tensor : array_like
         Fully antisymmetric form tensor(s)
+        - Single: shape (D, D, ..., D) with rank equal dimensions
+        - Batch: shape (B, D, D, ..., D) with rank equal dimensions
         
     Returns
     -------
@@ -24,22 +26,35 @@ def form_to_vec(tensor):
     """
     tensor = np.asarray(tensor)
     
-    # Determine if batch or single
-    if tensor.ndim == 3:
-        # Single 3-form (7,7,7) case
+    # Determine rank and dimension
+    if tensor.ndim < 2:
+        raise ValueError(f"Tensor must have at least 2 dimensions, got shape {tensor.shape}")
+    
+    # Check if this is a batch or single tensor
+    # Single: all dimensions are equal
+    # Batch: all dimensions after the first are equal
+    if len(set(tensor.shape)) == 1:
+        # Single case: (D, D, ..., D)
         is_single = True
-        D, rank = 7, 3
+        D = tensor.shape[0]
+        rank = tensor.ndim
         tensor = tensor[np.newaxis, ...]
-    elif tensor.ndim == 4 and tensor.shape[1] == tensor.shape[2] == tensor.shape[3]:
-        # Batch 3-form (B, 7,7,7) case
+    elif len(set(tensor.shape[1:])) == 1:
+        # Batch case: (B, D, D, ..., D)
         is_single = False
-        D, rank = tensor.shape[1], 3
+        D = tensor.shape[1]
+        rank = tensor.ndim - 1
     else:
-        raise ValueError(f"Expected shape (7,7,7) or (B,7,7,7), got {tensor.shape}")
+        raise ValueError(f"Expected all dimensions equal or all but first equal, got shape {tensor.shape}")
     
     # Extract components using unique index combinations
     unique_indices = list(combinations(range(D), rank))
-    result = np.array([[t[i, j, k] for (i, j, k) in unique_indices] for t in tensor])
+    
+    # Build result array by extracting components
+    result = np.zeros((tensor.shape[0], len(unique_indices)), dtype=tensor.dtype)
+    for i, idx_tuple in enumerate(unique_indices):
+        # Use advanced indexing to extract component
+        result[:, i] = tensor[(slice(None),) + idx_tuple]
     
     return result[0] if is_single else result
 
@@ -124,32 +139,63 @@ def vec_to_form(vectors, n=7, k=3):
 def metric_to_vec(matrix):
     """
     Compress a positive-definite symmetric matrix to its Cholesky lower-triangular components.
-    Works on single matrix or batch.
+    Works on single matrix or batch, for any square dimension.
     Returns flattened lower-triangular part (including diagonal).
+    
+    Parameters
+    ----------
+    matrix : array_like, shape (n, n) or (B, n, n)
+        Symmetric positive-definite matrix/matrices
+        
+    Returns
+    -------
+    ndarray, shape (n*(n+1)/2,) or (B, n*(n+1)/2)
+        Cholesky lower-triangular components
     """
     matrix = np.asarray(matrix)
     is_single = (matrix.ndim == 2)
     if is_single:
         matrix = matrix[np.newaxis, ...]
-    assert matrix.shape[1:] == (7, 7), f"Expected shape (B, 7, 7), got {matrix.shape}"
+    
+    # Detect dimension from matrix shape
+    n = matrix.shape[1]
+    assert matrix.shape[1] == matrix.shape[2], f"Expected square matrices, got shape {matrix.shape}"
+    
     chol = np.linalg.cholesky(matrix)
-    idx = np.tril_indices(7)
+    idx = np.tril_indices(n)
     result = chol[:, idx[0], idx[1]]
     return result[0] if is_single else result
 
 def vec_to_metric(vector):
     """
     Reconstruct symmetric positive-definite matrix from Cholesky lower-triangular components.
-    Works on single vector or batch.
+    Works on single vector or batch, for any dimension.
+    
+    Parameters
+    ----------
+    vector : array_like, shape (n*(n+1)/2,) or (B, n*(n+1)/2)
+        Cholesky lower-triangular components
+        
+    Returns
+    -------
+    ndarray, shape (n, n) or (B, n, n)
+        Reconstructed symmetric positive-definite matrix/matrices
     """
     vector = np.asarray(vector)
     is_single = (vector.ndim == 1)
     if is_single:
         vector = vector[np.newaxis, ...]
     batch_size = vector.shape[0]
-    assert vector.shape[1] == 28, f"Expected 28 components, got {vector.shape[1]}"
-    chol = np.zeros((batch_size, 7, 7), dtype=vector.dtype)
-    idx = np.tril_indices(7)
+    num_components = vector.shape[1]
+    
+    # Compute dimension n from number of components: n*(n+1)/2 = num_components
+    # Solving: n^2 + n - 2*num_components = 0
+    n = int((-1 + np.sqrt(1 + 8 * num_components)) / 2)
+    assert n * (n + 1) // 2 == num_components, \
+        f"Invalid number of components {num_components} for a symmetric matrix"
+    
+    chol = np.zeros((batch_size, n, n), dtype=vector.dtype)
+    idx = np.tril_indices(n)
     chol[:, idx[0], idx[1]] = vector
     # Reconstruct metric: L @ L.T
     output = np.matmul(chol, np.transpose(chol, (0, 2, 1)))

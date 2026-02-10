@@ -198,7 +198,7 @@ def print_data_statistics(data):
     print(f"Number of samples: {len(data['base_points'])}")
     print()
     print("Data arrays:")
-    for key in data.files:
+    for key in sorted(data.keys()):
         print(f"  {key:25s} shape: {data[key].shape}")
     print()
 
@@ -207,6 +207,8 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze G2 dataset and generate plots.')
     parser.add_argument('--run_number', type=int, default=None,
                         help='Run number to include in plot filenames (default: most recent run with both 3form and metric)')
+    parser.add_argument('--n-points', type=int, default=None,
+                        help='Number of points to randomly sample from test set (default: use all points)')
     args = parser.parse_args()
     
     # Determine run number
@@ -231,7 +233,30 @@ def main():
     
     # Load data
     print("Loading data...")
-    data = np.load(DATA_PATH)
+    data_raw = np.load(DATA_PATH)
+    
+    # Random sampling if requested
+    total_points = len(data_raw['base_points'])
+    if args.n_points is not None and args.n_points < total_points:
+        print(f"Randomly sampling {args.n_points} points from {total_points} total points...")
+        indices = np.random.choice(total_points, size=args.n_points, replace=False)
+        
+        # Create new dict with sampled data
+        data = {}
+        for key in data_raw.files:
+            # Only sample arrays that have the same number of samples
+            # (skip metadata like cy_run_number)
+            if len(data_raw[key]) == total_points:
+                data[key] = data_raw[key][indices]
+            else:
+                data[key] = data_raw[key]
+        print(f"Sampled {args.n_points} points for analysis")
+    else:
+        if args.n_points is not None:
+            print(f"Requested {args.n_points} points, but dataset only has {total_points}. Using all points.")
+        # Convert to dict for consistent access pattern
+        data = {key: data_raw[key] for key in data_raw.files}
+    
     print_data_statistics(data)
     
     # 1. Volume comparison plot

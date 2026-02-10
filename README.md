@@ -1,6 +1,6 @@
 # Learning G2-Structure 3-forms
 
-Neural network approach to learning G2 structures on Calabi-Yau Links. The package trains models to predict the defining 3-form φ and associated metric on the total space of the Link, enabling efficient computation of G2 geometry.
+Neural network approach to learning G2 structures on Calabi-Yau Links. The package trains models to predict the defining 3-form $\varphi$ and associated metric on the total space of the Link, enabling efficient computation of G2 geometry.
 
 ## Setup
 
@@ -28,7 +28,7 @@ python sampling.py
 
 This produces datasets in `samples/link_data/` containing:
 - Base points and link points on the CY
-- Analytically computed φ (3-form) and ψ (4-form)  
+- Analytically computed $\varphi$ (3-form) and $\psi$ (4-form)  
 - G2 metrics and local Reeb vector (eta) components
 - CY base patch coordinate indices for each point
 
@@ -49,7 +49,7 @@ Models are saved to `models/link_models/3form_run{N}.keras` and `metric_run{N}.k
 - Data splits and validation settings
 
 ### 4. Validate Models
-Check that learned models satisfy the G2 structure identities: φ∧ψ = 7·Vol(g), dψ = 0, and dφ = ω².
+Check that learned models satisfy the G2 structure identities: $\varphi \wedge \psi = 7·Vol(g)$, $d\psi = 0$, and $d\varphi = \omega^2$.
  
 ```bash
 # Check Kählerity of learned CY metric (dω = 0)
@@ -65,13 +65,17 @@ python analysis/g2_identities_model_v2.py --cy-run-number 1 --g2-run-number 1 --
 
 All scripts output statistics and save diagnostic plots to `plots/` directory.
 
-## Run Numbering System
+## Additional Functionality
 
+- The `run_g2.py` script also accepts '4form' as a task argument, which will train an NN on the 4-form $\psi$. This can then be used in the `g2_identities_model.py` checks (instead of building $\psi$ as $\ast\varphi$).  
+- The G2 identities checks can be performed at the level of the data (without the trained NN models) using the `g2_identities_analytic.py` script.  
+
+### Run Numbering System
 All training scripts use an automatic run numbering system to organize experiments:
 
 - Each training run is assigned an incrementing integer: run 1, run 2, run 3, etc.
 - Run numbers are detected automatically from existing model files in the relevant save directory
-- Scripts can load specific runs using `--cy-run-number` or `--g2-run-number` arguments
+- Scripts can load specific runs using `--cy-run-number` or `--g2-run-number` argumentsmv
 - Without specifying a run number, scripts auto-detect and use the most recent run
 - This enables easy experiment tracking and comparison without manual file management
 

@@ -107,17 +107,20 @@ def plot_domega_norms(vals, dataset_name, save_path=None):
         If provided, save plot to this path
     """
     plt.figure(figsize=(10, 6))
-    plt.plot(vals, 'o-', markersize=3, alpha=0.7)
-    plt.xlabel("Data Index")
+    plt.scatter(range(len(vals)), vals, c='b', marker='o', alpha=0.7)
+    plt.ylim(bottom=0, top=1)
+    plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathsf{d}\omega\|$")
     
     # Add statistics
+    '''
     vals_array = np.array(vals)
     plt.axhline(np.mean(vals_array), color='r', linestyle='--', 
                 label=f'Mean: {np.mean(vals_array):.2e}')
     plt.axhline(np.median(vals_array), color='g', linestyle='--', 
                 label=f'Median: {np.median(vals_array):.2e}')
     plt.legend()
+    '''
     
     plt.tight_layout()
     

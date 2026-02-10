@@ -27,7 +27,7 @@ SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 # Import geometry compression functions
-from geometry.compression import metric_to_vec
+from geometry.compression import metric_to_vec, form_to_vec
 
 # Setup path for cymetric package
 _parent_dir = SCRIPT_DIR.parent
@@ -62,70 +62,9 @@ from cymetric.models.models import MultFSModel
 from analysis.utils import get_most_recent_cy_run_number
 
 
-def oriented_3form_components(T):
-    """
-    Extract the 35 oriented components of a 3-form tensor.
-    
-    Parameters
-    ----------
-    T : ndarray, shape (7, 7, 7)
-        Fully antisymmetric 3-form tensor
-        
-    Returns
-    -------
-    ndarray, shape (35,)
-        Oriented components
-    """
-    T = np.asarray(T)
-    assert T.shape == (7, 7, 7)
-    triples = list(itertools.combinations(range(7), 3))
-    vals = np.array([T[i, j, k] for (i, j, k) in triples], dtype=T.dtype)
-    return vals
-
-
-def oriented_4form_components(T):
-    """
-    Extract the 35 oriented components of a (7,7,7,7) tensor T,
-    corresponding to indices (i,j,k,l) with i<j<k<l.
-
-    Returns
-    -------
-    comps : np.ndarray, shape (35,)
-        Oriented components ordered lexicographically.
-    """
-    if T.shape != (7, 7, 7, 7):
-        raise ValueError("Input tensor must have shape (7,7,7,7)")
-
-    indices = list(itertools.combinations(range(7), 4))
-    vals = np.array([T[i, j, k, l] for (i, j, k, l) in indices], dtype=T.dtype)
-    return vals
-
-
-def upper_triangular_part_6x6(A, include_diagonal=True):
-    """
-    Extract the upper triangular part of a 6x6 matrix.
-
-    Parameters
-    ----------
-    A : array_like, shape (6, 6)
-        Input matrix.
-    include_diagonal : bool
-        Whether to include the diagonal entries.
-
-    Returns
-    -------
-    v : ndarray, shape (21,) if include_diagonal else (15,)
-        Upper triangular entries in row-major order.
-    """
-    A = np.asarray(A)
-    assert A.shape == (6, 6), "Input must be a 6x6 matrix"
-
-    if include_diagonal:
-        idx = np.triu_indices(6)
-    else:
-        idx = np.triu_indices(6, k=1)
-
-    return A[idx]
+# Compression functions are now imported from geometry.compression
+# (oriented_3form_components, oriented_4form_components, and upper_triangular_part_6x6
+#  have been removed as they're equivalent to form_to_vec and metric_to_vec)
 
 
 def split_npz(data, train=0.9, val=0.05, test=0.05, seed=42):
@@ -259,9 +198,9 @@ def sampler_g2_package_R7(p, fmodel, BASIS, rotation=0):
         base_point,
         link_pt,
         applied_rotation,
-        oriented_3form_components(g2),
-        oriented_4form_components(star_g2),
-        upper_triangular_part_6x6(riemannian_metric),
+        form_to_vec(g2),
+        form_to_vec(star_g2),
+        metric_to_vec(riemannian_metric),
         metric_to_vec(g2_metric),
         drop_max,
         drop_one,
