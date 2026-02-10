@@ -112,19 +112,49 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
         # Compute statistics for phi, metric, psi
         phi_norms.append(np.linalg.norm(phi))
         metric_dets.append(np.linalg.det(metric))
+        
+        # Predict psi directly from 4form model
+        psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
+        if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
+            y_mean_psi = g2_models['4form_y_mean']
+            y_std_psi = g2_models['4form_y_std']
+            psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+        else:
+            psi_vec = psi_vec_raw
+        
+        # Expand from 23 to 35 dimensions if needed
+        if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
+            psi_vec_expanded = np.zeros(35)
+            psi_vec_expanded[g2_models['4form_nonzero_indices']] = psi_vec
+            psi_vec = psi_vec_expanded
+        
         try:
-            psi = Hodge_Dual(phi, metric)
+            psi = vec_to_form(psi_vec, n=7, k=4)
             psi_norms.append(np.linalg.norm(psi))
         except Exception:
             psi_norms.append(np.nan)
-        '''
+
         # 1. φ ∧ ψ = 7·Vol(K_f, g_φ)
         try:
             det_metric = np.linalg.det(metric)
             if det_metric <= 0 or not np.isfinite(det_metric):
                 skipped_phi_wedge_psi += 1
             else:
-                psi = Hodge_Dual(phi, metric)
+                # Predict psi from 4form model
+                psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
+                if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
+                    y_mean_psi = g2_models['4form_y_mean']
+                    y_std_psi = g2_models['4form_y_std']
+                    psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+                else:
+                    psi_vec = psi_vec_raw
+                # Expand from 23 to 35 dimensions if needed
+                if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
+                    psi_vec_expanded = np.zeros(35)
+                    psi_vec_expanded[g2_models['4form_nonzero_indices']] = psi_vec
+                    psi_vec = psi_vec_expanded
+                psi = vec_to_form(psi_vec, n=7, k=4)
+                
                 prod = wedge(phi, psi)[0, 1, 2, 3, 4, 5, 6]
                 vol = np.sqrt(det_metric)
                 val = prod / vol
@@ -134,6 +164,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
                     skipped_phi_wedge_psi += 1
         except Exception:
             skipped_phi_wedge_psi += 1
+
         # 2. dψ = 0 and 3. dφ = ω² (neighborhood checks)
         if base_points is not None and rotations is not None:
             base_point = base_points[idx]
@@ -175,19 +206,18 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
                 link_pt, eta, drop_max, drop_one = compute_link_features(p, rotation)
                 X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
                 X_input = np.expand_dims(X_input, axis=0)
-                phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
-                metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
-                if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
-                    phi_vec = phi_vec_raw * y_std_phi + y_mean_phi
+                # Use 4form model directly
+                psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
+                if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
+                    psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
                 else:
-                    phi_vec = phi_vec_raw
-                if 'metric_y_mean' in g2_models and 'metric_y_std' in g2_models:
-                    metric_vec = metric_vec_raw * y_std_metric + y_mean_metric
-                else:
-                    metric_vec = metric_vec_raw
-                phi = vec_to_form(phi_vec, n=7, k=3)
-                metric = vec_to_metric(metric_vec)
-                return Hodge_Dual(phi, metric)
+                    psi_vec = psi_vec_raw
+                # Expand from 23 to 35 dimensions if needed
+                if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
+                    psi_vec_expanded = np.zeros(35)
+                    psi_vec_expanded[g2_models['4form_nonzero_indices']] = psi_vec
+                    psi_vec = psi_vec_expanded
+                return vec_to_form(psi_vec, n=7, k=4)
             try:
                 # dφ check
                 dic_phi = sample_numerical_g2_neighborhood_val(
@@ -224,7 +254,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
                     skipped_dpsi += 1
             except Exception:
                 skipped_dpsi += 1
-            '''
+
     # Print statistics for ||phi||, det(metric), ||psi||
     phi_norms_arr = np.array(phi_norms)
     metric_dets_arr = np.array(metric_dets)
@@ -236,7 +266,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
     print("  Statistics for predicted ||psi||:")
     print(f"    min: {np.nanmin(psi_norms_arr):.6e}, mean: {np.nanmean(psi_norms_arr):.6e}, max: {np.nanmax(psi_norms_arr):.6e}")
       
-    # Print statistics
+    # Print torsion statistics
     print(f"\n  φ∧ψ check - Valid: {len(vals_phi_wedge_psi)}/{n_points}, Skipped: {skipped_phi_wedge_psi}")
     print(f"  dψ check - Valid: {len(vals_dpsi)}/{n_points}, Skipped: {skipped_dpsi}")
     print(f"  dφ check - Valid: {len(vals_dphi)}/{n_points}, Skipped: {skipped_dphi}")

@@ -113,7 +113,7 @@ def get_most_recent_cy_run_number(model_dir='./models/cy_models'):
 
 def load_g2_models(g2_run_number, script_dir):
     """
-    Load trained 3form and metric G2 models.
+    Load trained 3form, metric, and 4form G2 models.
     
     Parameters
     ----------
@@ -125,35 +125,44 @@ def load_g2_models(g2_run_number, script_dir):
     Returns
     -------
     dict or None
-        Dictionary with '3form' and 'metric' keys containing loaded models,
-        or None if models not found
+        Dictionary with '3form', 'metric', and '4form' keys containing loaded models,
+        or None if required models not found
     """
     models_dir = script_dir / 'models' / 'link_models'
 
     form_model_path = models_dir / f"3form_run{g2_run_number}.keras"
     metric_model_path = models_dir / f"metric_run{g2_run_number}.keras"
+    fourform_model_path = models_dir / f"4form_run{g2_run_number}.keras"
 
     models = {}
 
     if not form_model_path.exists():
-        print(f"Warning: 3form model not found: {form_model_path}")
+        print(f"Error: 3form model not found: {form_model_path}")
         return None
 
     if not metric_model_path.exists():
-        print(f"Warning: Metric model not found: {metric_model_path}")
+        print(f"Error: Metric model not found: {metric_model_path}")
+        return None
+    
+    if not fourform_model_path.exists():
+        print(f"Error: 4form model not found: {fourform_model_path}")
+        print(f"Please train the 4form model first using: python run_g2.py --task 4form")
         return None
 
     models['3form'] = tf.keras.models.load_model(str(form_model_path))
     models['metric'] = tf.keras.models.load_model(str(metric_model_path))
+    models['4form'] = tf.keras.models.load_model(str(fourform_model_path))
 
     return_dict = {
         '3form': models['3form'],
-        'metric': models['metric']
+        'metric': models['metric'],
+        '4form': models['4form']
         }
 
     # Load normalization statistics from .npz files
     form_norm_path = models_dir / f"3form_run{g2_run_number}_norm_stats.npz"
     metric_norm_path = models_dir / f"metric_run{g2_run_number}_norm_stats.npz"
+    fourform_norm_path = models_dir / f"4form_run{g2_run_number}_norm_stats.npz"
 
     if form_norm_path.exists():
         form_norm_data = np.load(form_norm_path)
@@ -175,6 +184,29 @@ def load_g2_models(g2_run_number, script_dir):
 
     print(f"Loaded 3form model from run {g2_run_number}")
     print(f"Loaded metric model from run {g2_run_number}")
+    
+    # Load 4form normalization stats
+    if fourform_norm_path.exists():
+        fourform_norm_data = np.load(fourform_norm_path)
+        y_mean_fourform = fourform_norm_data['y_mean']
+        y_std_fourform = np.sqrt(fourform_norm_data['y_variance'])
+        return_dict['4form_y_mean'] = y_mean_fourform
+        return_dict['4form_y_std'] = y_std_fourform
+    else:
+        print(f"  WARNING: 4form normalization stats file not found: {fourform_norm_path}")
+    
+    # Load index mapping for 4form (to expand from 23 to 35 dims)
+    index_map_path = models_dir / f"4form_run{g2_run_number}_index_map.npz"
+    if index_map_path.exists():
+        index_map_data = np.load(index_map_path)
+        return_dict['4form_zero_indices'] = index_map_data['psi_zero_indices']
+        return_dict['4form_nonzero_indices'] = index_map_data['psi_nonzero_indices']
+    else:
+        # Use default indices
+        return_dict['4form_zero_indices'] = np.array([6, 8, 12, 15, 17, 18, 24, 25, 27, 29, 32, 33])
+        return_dict['4form_nonzero_indices'] = np.array([i for i in range(35) if i not in return_dict['4form_zero_indices']])
+    
+    print(f"Loaded 4form model from run {g2_run_number}")
 
     return  return_dict 
 
@@ -259,6 +291,9 @@ def print_statistics(name, vals):
     """
     vals = np.asarray(vals, dtype=float)
     print(f"\n{name} Statistics:")
+    if len(vals) == 0:
+        print(f"  No valid values to analyze")
+        return
     print(f"  Mean:   {np.mean(vals):.6e}")
     print(f"  Median: {np.median(vals):.6e}")
     print(f"  Std:    {np.std(vals):.6e}")
@@ -267,6 +302,10 @@ def print_statistics(name, vals):
 
 def plot_phi_wedge_psi(vals, run_number, output_dir):
     """Plot φ∧ψ/Vol check results."""
+    if len(vals) == 0:
+        print(f"Skipping φ∧ψ plot: no valid data")
+        return
+    
     plt.figure(figsize=(10, 6))
     plt.plot(vals, marker='.', linestyle='-', alpha=0.7)
     plt.xlabel("Sample Index")
@@ -315,6 +354,10 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir):
 
 def plot_dpsi(vals_dpsi, run_number, output_dir):
     """Plot ||dψ|| distribution."""
+    if len(vals_dpsi) == 0:
+        print(f"Skipping dψ plots: no valid data")
+        return
+    
     q_low, q_high = np.percentile(vals_dpsi, [1, 99])
     vals_filtered = vals_dpsi[(vals_dpsi >= q_low) & (vals_dpsi <= q_high)]
     
@@ -330,10 +373,11 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.close()
     
     # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.xlabel(r"$\|\mathrm{d}\psi\|$")
-    plt.ylabel("Count")
+    if len(vals_filtered) > 0:
+        plt.figure(figsize=(7, 5))
+        plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+        plt.xlabel(r"$\|\mathrm{d}\psi\|$")
+        plt.ylabel("Count")
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
