@@ -35,6 +35,7 @@ from geometry.numerical_exterior_derivative import (
     numerical_d_g2
 )
 from geometry.compression import vec_to_form, vec_to_metric
+from geometry.numerical_star_R7 import Hodge_Dual
 
 # Import analysis utilities
 from analysis.utils import (
@@ -49,13 +50,19 @@ from analysis.utils import (
     plot_dpsi
 )
 
-def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e-5, global_rotation_epsilon=1e-5):
+def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e-5, global_rotation_epsilon=1e-5, psi_method='model'):
     """
     Consolidated check for G2 identities using trained model predictions:
     1. φ ∧ ψ = 7·Vol(K_f, g_φ)
     2. dψ = 0
     3. dφ = ω²
     Uses the same neighborhood points for all checks and avoids repeated predictions.
+    
+    Parameters:
+    -----------
+    psi_method : str, either 'model' or 'star'
+        'model': use 4form model to predict psi directly
+        'star': compute psi using Hodge star from phi and metric
     """
     # Prepare input features
     link_points = data['link_points']
@@ -110,9 +117,8 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
         # Predict (raw normalized outputs)
         phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
         metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
-        psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
-
-        # Denormalize
+        
+        # Denormalize phi and metric
         if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
             y_mean_phi = g2_models['3form_y_mean']
             y_std_phi = g2_models['3form_y_std']
@@ -125,33 +131,54 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
             metric_vec = metric_vec_raw * y_std_metric + y_mean_metric
         else:
             metric_vec = metric_vec_raw
-        if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
-            y_mean_psi = g2_models['4form_y_mean']
-            y_std_psi = g2_models['4form_y_std']
-            psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+        
+        # Get psi based on method
+        if psi_method == 'model':
+            # Use 4form model
+            psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
+            if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
+                y_mean_psi = g2_models['4form_y_mean']
+                y_std_psi = g2_models['4form_y_std']
+                psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+            else:
+                psi_vec = psi_vec_raw
+            
+            # Flatten to 1D if needed
+            if psi_vec.ndim > 1:
+                psi_vec = psi_vec.flatten()
+            
+            # Expand psi_vec from 23 to 35 dimensions if needed
+            if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
+                psi_vec_23 = psi_vec
+                psi_vec = np.zeros(35)
+                psi_vec[g2_models['4form_nonzero_indices']] = psi_vec_23
+        
+        # Convert to tensor forms
+        phi = vec_to_form(phi_vec, n=7, k=3)
+        metric = vec_to_metric(metric_vec)
+        if metric.ndim == 3:
+            metric = metric[0]
+        
+        if psi_method == 'model':
+            psi = vec_to_form(psi_vec, n=7, k=4)
         else:
-            psi_vec = psi_vec_raw
-        
-        # Flatten to 1D if needed
-        if psi_vec.ndim > 1:
-            psi_vec = psi_vec.flatten()
-        
-        # Expand psi_vec from 23 to 35 dimensions if needed
-        if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
-            psi_vec_23 = psi_vec
-            psi_vec = np.zeros(35)
-            psi_vec[g2_models['4form_nonzero_indices']] = psi_vec_23
+            # Use Hodge star: psi = star(phi, metric)
+            try:
+                psi = Hodge_Dual(phi, metric)
+            except Exception as e:
+                # If Hodge dual fails, skip this point
+                if DEBUG:
+                    print(f"Hodge dual failed at idx {idx}: {e}")
+                continue
 
         if DEBUG and idx == indices[0]:
             print(f"\n[DEBUG] Base point predictions (idx={idx}):")
             print(f"  phi_vec range: [{phi_vec.min():.6e}, {phi_vec.max():.6e}]")
-            print(f"  psi_vec range: [{psi_vec.min():.6e}, {psi_vec.max():.6e}]")
+            if psi_method == 'model':
+                print(f"  psi_vec range: [{psi_vec.min():.6e}, {psi_vec.max():.6e}]")
+            else:
+                print(f"  psi (Hodge star) norm: {np.linalg.norm(psi):.6e}")
             print(f"  metric_vec range: [{metric_vec.min():.6e}, {metric_vec.max():.6e}]")
-
-        # Convert to tensor forms
-        phi = vec_to_form(phi_vec, n=7, k=3)
-        metric = vec_to_metric(metric_vec)
-        psi = vec_to_form(psi_vec, n=7, k=4)
         
         # Compute statistics for phi, metric, psi
         phi_norms.append(np.linalg.norm(phi))
@@ -303,27 +330,57 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
                 link_pt, eta = compute_link_features_fixed_patch(p)
                 X_input = np.concatenate([link_pt, eta, [base_drop_max, base_drop_one]])
                 X_input = np.expand_dims(X_input, axis=0)
-                # Use 4form model directly
-                psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
-                if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
-                    psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+                
+                if psi_method == 'model':
+                    # Use 4form model directly
+                    psi_vec_raw = g2_models['4form'].predict(X_input, verbose=0)[0]
+                    if '4form_y_mean' in g2_models and '4form_y_std' in g2_models:
+                        psi_vec = psi_vec_raw * y_std_psi + y_mean_psi
+                    else:
+                        psi_vec = psi_vec_raw
+                    # Flatten to 1D if needed
+                    if psi_vec.ndim > 1:
+                        psi_vec = psi_vec.flatten()
+                    # Expand from 23 to 35 dimensions if needed
+                    if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
+                        psi_vec_expanded = np.zeros(35)
+                        psi_vec_expanded[g2_models['4form_nonzero_indices']] = psi_vec
+                        psi_vec = psi_vec_expanded
+                    psi_form = vec_to_form(psi_vec, n=7, k=4)
+                    if DEBUG and not hasattr(predict_psi_at_point, 'debug_printed'):
+                        predict_psi_at_point.debug_printed = True
+                        print(f"  [DEBUG] predict_psi_at_point (model):")
+                        print(f"    psi_vec_raw range: [{psi_vec_raw.min():.6e}, {psi_vec_raw.max():.6e}]")
+                        print(f"    psi_vec denorm range: [{psi_vec.min():.6e}, {psi_vec.max():.6e}]")
+                        print(f"    psi_form norm: {np.linalg.norm(psi_form):.6e}")
                 else:
-                    psi_vec = psi_vec_raw
-                # Flatten to 1D if needed
-                if psi_vec.ndim > 1:
-                    psi_vec = psi_vec.flatten()
-                # Expand from 23 to 35 dimensions if needed
-                if psi_vec.shape[0] == 23 and '4form_nonzero_indices' in g2_models:
-                    psi_vec_expanded = np.zeros(35)
-                    psi_vec_expanded[g2_models['4form_nonzero_indices']] = psi_vec
-                    psi_vec = psi_vec_expanded
-                psi_form = vec_to_form(psi_vec, n=7, k=4)
-                if DEBUG and not hasattr(predict_psi_at_point, 'debug_printed'):
-                    predict_psi_at_point.debug_printed = True
-                    print(f"  [DEBUG] predict_psi_at_point:")
-                    print(f"    psi_vec_raw range: [{psi_vec_raw.min():.6e}, {psi_vec_raw.max():.6e}]")
-                    print(f"    psi_vec denorm range: [{psi_vec.min():.6e}, {psi_vec.max():.6e}]")
-                    print(f"    psi_form norm: {np.linalg.norm(psi_form):.6e}")
+                    # Use Hodge star: compute phi and metric, then psi = star(phi, metric)
+                    phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
+                    metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
+                    
+                    if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
+                        phi_vec = phi_vec_raw * y_std_phi + y_mean_phi
+                    else:
+                        phi_vec = phi_vec_raw
+                    if 'metric_y_mean' in g2_models and 'metric_y_std' in g2_models:
+                        metric_vec = metric_vec_raw * y_std_metric + y_mean_metric
+                    else:
+                        metric_vec = metric_vec_raw
+                    
+                    phi_form = vec_to_form(phi_vec, n=7, k=3)
+                    metric_tensor = vec_to_metric(metric_vec)
+                    if metric_tensor.ndim == 3:
+                        metric_tensor = metric_tensor[0]
+                    
+                    psi_form = Hodge_Dual(phi_form, metric_tensor)
+                    
+                    if DEBUG and not hasattr(predict_psi_at_point, 'debug_printed'):
+                        predict_psi_at_point.debug_printed = True
+                        print(f"  [DEBUG] predict_psi_at_point (star):")
+                        print(f"    phi_form norm: {np.linalg.norm(phi_form):.6e}")
+                        print(f"    det(metric): {np.linalg.det(metric_tensor):.6e}")
+                        print(f"    psi_form norm: {np.linalg.norm(psi_form):.6e}")
+                
                 return psi_form
             try:
                 # dφ check - use sample_numerical_g2_neighborhood_val with rotation
@@ -475,6 +532,8 @@ def main():
                        help='Epsilon for numerical derivative')
     parser.add_argument('--rotation-epsilon', type=float, default=1e-5,
                        help='Epsilon for global phase rotation')
+    parser.add_argument('--psi-method', type=str, default='model', choices=['model', 'star'],
+                       help='Method to compute psi: "model" (use 4form model) or "star" (use Hodge star from phi and metric)')
     parser.add_argument('--output-dir', type=str, default='./plots',
                        help='Directory to save output plots')
     
@@ -512,6 +571,14 @@ def main():
         print("Error: Could not load G2 models")
         sys.exit(1)
     
+    # If using star method, remove 4form model requirement
+    if args.psi_method == 'star':
+        if '4form' in g2_models:
+            del g2_models['4form']
+        print(f"Using psi_method='star': computing psi via Hodge star from phi and metric")
+    else:
+        print(f"Using psi_method='model': predicting psi directly from 4form model")
+    
     # Determine CY run number
     if args.cy_run_number is None:
         if dataset_cy_run is not None:
@@ -541,7 +608,7 @@ def main():
     # Run checks and print statistics
     vals_phi_psi, vals_dpsi, vals_dphi, vals_omega2, vals_ratio, outlier_info = check_g2_identities(
         g2_data, g2_models, fmodel, BASIS, n_points,
-        args.epsilon, args.rotation_epsilon
+        args.epsilon, args.rotation_epsilon, args.psi_method
     )
     
     print_statistics("φ∧ψ/Vol (model predictions)", vals_phi_psi)

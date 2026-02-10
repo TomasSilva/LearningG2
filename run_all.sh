@@ -50,10 +50,15 @@ python run_g2.py --task 4form --n-epochs 150
 #echo "Step 7: Validating G2 Identities (Analytic)..."
 #python analysis/g2_identities_analytic.py
 
-# Step 8: Validate G2 Identities (Model)
+# Step 8: Validate G2 Identities (Model with Hodge star)
 echo ""
-echo "Step 8: Validating G2 Identities (Model)..."
-python analysis/g2_identities_model.py --n-pounts 100 --output-dir plots/small_test
+echo "Step 8a: Validating G2 Identities (Model v2 with Hodge star method)..."
+python analysis/g2_identities_model_v2.py --n-points 100 --psi-method star --output-dir plots/small_test
+
+# Step 8b: Validate G2 Identities (Model with 4form model)
+echo ""
+echo "Step 8b: Validating G2 Identities (Model v2 with 4form model)..."
+python analysis/g2_identities_model_v2.py --n-points 100 --psi-method model --output-dir plots/small_test
 
 echo ""
 echo "====================================="

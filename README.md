@@ -59,7 +59,8 @@ python analysis/cy_kahlerity.py --cy-run-number 1
 python analysis/g2_identities_analytic.py --cy-run-number 1
 
 # Check G2 identities using trained model predictions
-python analysis/g2_identities_model.py --cy-run-number 1 --g2-run-number 1
+# Use --psi-method star (Hodge star) or --psi-method model (4form model)
+python analysis/g2_identities_model_v2.py --cy-run-number 1 --g2-run-number 1 --psi-method star
 ```
 
 All scripts output statistics and save diagnostic plots to `plots/` directory.
