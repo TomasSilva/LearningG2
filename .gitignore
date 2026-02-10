@@ -1,7 +1,9 @@
 # Project-specific
 scratch/
 plots/**
+models/cy_models/**
 models/link_models/**
+samples/cy_data/**
 samples/link_data/**
 
 # Python cache
