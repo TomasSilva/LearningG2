@@ -14,7 +14,7 @@ Set up the Python environment following the instructions in [`environment/README
 Train a neural network to learn the Ricci-flat Kähler metric on the Calabi-Yau threefold using the [cymetric](https://github.com/pythoncymetric/cymetric) package:
 
 ```bash
-python run_cy.py
+python run_cy.py --n-points 100000
 ```
 
 This generates training data for the quintic CY threefold and trains a model that outputs the Hermitian metric components. The trained model is saved to `models/cy_models/cy_metric_model_run{N}.keras`.
@@ -23,7 +23,7 @@ This generates training data for the quintic CY threefold and trains a model tha
 Create training data for G2 structure learning by sampling points on the CY and computing the analytical G2 forms:
 
 ```bash
-python sampling.py --n-points 5000
+python sampling.py
 ```
 
 This produces datasets in `samples/link_data/` containing:

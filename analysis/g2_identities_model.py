@@ -153,37 +153,6 @@ def compute_model_mse(g2_data, g2_models):
     return results
 
 
-def compute_hodge_star_psi(phi, metric):
-    """
-    Compute ψ = ⋆_{g_G2} φ using the Hodge star operator.
-    
-    For G2 geometry, the metric for the Hodge star should be g_φ (the metric induced by φ),
-    but we can also use the predicted G2 metric directly.
-    
-    Parameters
-    ----------
-    phi : ndarray, shape (35,) or (7,7,7)
-        3-form φ (as vector or tensor)
-    metric : ndarray, shape (49,) or (7,7)
-        G2 metric tensor (as vector or matrix)
-        
-    Returns
-    -------
-    ndarray, shape (7,7,7,7)
-        4-form ψ = ⋆φ
-    """
-    # Convert to tensor forms if needed
-    if phi.ndim == 1:
-        phi = vec_to_form(phi, n=7, k=3)
-    if metric.ndim == 1:
-        metric = vec_to_metric(metric)
-    
-    # Compute Hodge star: ψ = ⋆_{g} φ
-    psi = Hodge_Dual(phi, metric)
-    
-    return psi
-
-
 def check_phi_wedge_psi(data, g2_models, n_points=100):
     """Check φ ∧ ψ = 7·Vol(g_φ) using model predictions."""
     link_points = data["link_points"]
@@ -602,6 +571,8 @@ def main():
                        help='Epsilon for global phase rotation')
     parser.add_argument('--output-dir', type=str, default='./plots',
                        help='Directory to save output plots')
+    parser.add_argument('--psi-method', type=str, choices=['star', 'model'], default='star',
+                       help="Method to compute psi: 'star' (Hodge dual) or 'model' (4form model). Default: 'star'")
     
     args = parser.parse_args()
     

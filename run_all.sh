@@ -19,7 +19,6 @@ echo "====================================="
 #echo "Step 2: Generating G2 Sample Data..."
 #python sampling.py
 
-
 # Step 3: Train G2 3-form Model
 echo ""
 echo "Step 3: Training G2 3-form Model..."
@@ -29,11 +28,6 @@ python run_g2.py --task 3form --n-epochs 150
 echo ""
 echo "Step 4: Training G2 Metric Model..."
 python run_g2.py --task metric --n-epochs 150 
-
-# Step 4b: Train G2 4-form Model
-echo ""
-echo "Step 4b: Training G2 4-form Model..."
-python run_g2.py --task 4form --n-epochs 150 
 
 # Step 5: Run data analysis
 #echo ""
@@ -53,12 +47,7 @@ python run_g2.py --task 4form --n-epochs 150
 # Step 8: Validate G2 Identities (Model with Hodge star)
 echo ""
 echo "Step 8a: Validating G2 Identities (Model v2 with Hodge star method)..."
-python analysis/g2_identities_model_v2.py --n-points 100 --psi-method star --output-dir plots/small_test
-
-# Step 8b: Validate G2 Identities (Model with 4form model)
-echo ""
-echo "Step 8b: Validating G2 Identities (Model v2 with 4form model)..."
-python analysis/g2_identities_model_v2.py --n-points 100 --psi-method model --output-dir plots/small_test
+python analysis/g2_identities_model_v2.py --psi-method star 
 
 echo ""
 echo "====================================="
