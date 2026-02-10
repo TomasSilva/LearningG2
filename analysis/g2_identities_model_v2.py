@@ -75,6 +75,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
     vals_phi_wedge_psi = []
     vals_dpsi = []
     vals_dphi = []
+    vals_omega2 = []
     vals_ratio = []
     skipped_phi_wedge_psi = 0
     skipped_dpsi = 0
@@ -367,6 +368,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
                 
                 if np.isfinite(norm_dphi) and np.isfinite(norm_w2) and norm_w2 > 0:
                     vals_dphi.append(norm_dphi)
+                    vals_omega2.append(norm_w2)
                     ratio = norm_dphi / norm_w2
                     vals_ratio.append(ratio)
                     # Track if this is an outlier (>20)
@@ -453,7 +455,7 @@ def check_g2_identities(data, g2_models, fmodel, BASIS, n_points=100, epsilon=1e
     print(f"\n  φ∧ψ check - Valid: {len(vals_phi_wedge_psi)}/{n_points}, Skipped: {skipped_phi_wedge_psi}")
     print(f"  dψ check - Valid: {len(vals_dpsi)}/{n_points}, Skipped: {skipped_dpsi}")
     print(f"  dφ check - Valid: {len(vals_dphi)}/{n_points}, Skipped: {skipped_dphi}")
-    return np.array(vals_phi_wedge_psi), np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_ratio), outlier_info
+    return np.array(vals_phi_wedge_psi), np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_omega2), np.array(vals_ratio), outlier_info
 
 def main():
     parser = argparse.ArgumentParser(
@@ -537,7 +539,7 @@ def main():
     fmodel, BASIS, cy_data = load_cy_model(cy_run_number, args.cy_data_dir, script_dir)
     
     # Run checks and print statistics
-    vals_phi_psi, vals_dpsi, vals_dphi, vals_ratio, outlier_info = check_g2_identities(
+    vals_phi_psi, vals_dpsi, vals_dphi, vals_omega2, vals_ratio, outlier_info = check_g2_identities(
         g2_data, g2_models, fmodel, BASIS, n_points,
         args.epsilon, args.rotation_epsilon
     )
@@ -546,6 +548,11 @@ def main():
     print_statistics("||dψ|| (model predictions)", vals_dpsi)
     print_statistics("||dφ|| (model predictions)", vals_dphi)
     print_statistics("||dφ||/||ω²|| (model predictions)", vals_ratio)
+    
+    # Compute MSE between dφ and ω²
+    if len(vals_dphi) > 0 and len(vals_omega2) > 0:
+        mse_dphi_omega = np.mean((vals_dphi - vals_omega2)**2)
+        print(f"\nMSE between ||dφ|| and ||ω²||: {mse_dphi_omega:.6e}")
     
     # Print outlier analysis
     print("\n" + "="*80)

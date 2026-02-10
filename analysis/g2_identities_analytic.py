@@ -43,11 +43,13 @@ from geometry.compression import form_to_vec, vec_to_form, metric_to_vec, vec_to
 
 # Import analysis utilities
 from analysis.utils import (
-
     get_most_recent_cy_run_number,
     load_cy_model,
     load_g2_data,
-    print_statistics
+    print_statistics,
+    plot_phi_wedge_psi,
+    plot_dphi_ratio,
+    plot_dpsi
 )
 
 
@@ -136,6 +138,7 @@ def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-5,
     
     vals_dpsi = []
     vals_dphi = []
+    vals_omega2 = []
     vals_ratio = []
     
     def sampler_phi(p):
@@ -174,120 +177,16 @@ def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-5,
         w = kahler_form_real_matrix(np.array(fmodel(np.expand_dims(point, axis=0))[0]))
         w_R7 = np.pad(w, ((0, 1), (0, 1)), mode='constant')
         w2 = wedge(w_R7, w_R7)
+        norm_w2 = np.linalg.norm(w2)
         
+        vals_omega2.append(norm_w2)
         # Ratio ||dφ|| / ||ω²||
-        vals_ratio.append(np.linalg.norm(d_phi) / np.linalg.norm(w2))
+        vals_ratio.append(np.linalg.norm(d_phi) / norm_w2)
     
-    return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_ratio)
+    return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_omega2), np.array(vals_ratio)
 
 
-def plot_phi_wedge_psi(vals, run_number, output_dir):
-    """Plot φ∧ψ/Vol check results."""
-    plt.figure(figsize=(10, 6))
-    plt.plot(vals, marker='.', linestyle='-', alpha=0.7)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
-    plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
-                label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
-    # plt.ylim(6.5, 7.5)  # Temporarily commented out for debugging
-    plt.legend()
-    plt.tight_layout()
-    
-    output_path = output_dir / f"g2_phi_wedge_psi_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
 
-
-def plot_dpsi(vals_dpsi, run_number, output_dir):
-    """Plot ||dψ|| distribution."""
-    # Filter outliers (1st to 99th percentile)
-    q_low, q_high = np.percentile(vals_dpsi, [1, 99])
-    vals_filtered = vals_dpsi[(vals_dpsi >= q_low) & (vals_dpsi <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\psi\|$")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dpsi_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.xlabel(r"$\|\mathrm{d}\psi\|$")
-    plt.ylabel("Count")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dpsi_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-
-
-def plot_dphi(vals_dphi, run_number, output_dir):
-    """Plot ||dφ|| distribution."""
-    # Filter outliers
-    q_low, q_high = np.percentile(vals_dphi, [1, 99])
-    vals_filtered = vals_dphi[(vals_dphi >= q_low) & (vals_dphi <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.ylabel("Count")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-
-
-def plot_ratio(vals_ratio, run_number, output_dir):
-    """Plot ||dφ|| / ||ω²|| ratio distribution."""
-    # Filter outliers
-    q_low, q_high = np.percentile(vals_ratio, [1, 99])
-    vals_filtered = vals_ratio[(vals_ratio >= q_low) & (vals_ratio <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_ratio, marker='.', linestyle='None', alpha=0.6)
-    plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    plt.legend()
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    plt.ylabel("Count")
-    plt.legend()
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
 
 
 def main():
@@ -358,7 +257,7 @@ def main():
     # Check 2 & 3: dψ = 0 and dφ = ω²
     fmodel, BASIS, cy_data = load_cy_model(cy_run_number, args.cy_data_dir, script_dir)
     
-    vals_dpsi, vals_dphi, vals_ratio = check_d_psi_and_d_phi(
+    vals_dpsi, vals_dphi, vals_omega2, vals_ratio = check_d_psi_and_d_phi(
         g2_data, fmodel, BASIS, n_points, 
         args.epsilon, args.rotation_epsilon
     )
@@ -367,9 +266,13 @@ def main():
     print_statistics("||dφ||", vals_dphi)
     print_statistics("||dφ||/||ω²||", vals_ratio)
     
+    # Compute MSE between dφ and ω²
+    if len(vals_dphi) > 0 and len(vals_omega2) > 0:
+        mse_dphi_omega = np.mean((vals_dphi - vals_omega2)**2)
+        print(f"\nMSE between ||dφ|| and ||ω²||: {mse_dphi_omega:.6e}")
+    
     plot_dpsi(vals_dpsi, "analytic", output_dir)
-    plot_dphi(vals_dphi, "analytic", output_dir)
-    plot_ratio(vals_ratio, "analytic", output_dir)
+    plot_dphi_ratio(vals_ratio, "analytic", output_dir)
     
     print()
     print("=" * 80)

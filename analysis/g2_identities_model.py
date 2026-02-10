@@ -44,7 +44,10 @@ from analysis.utils import (
     load_g2_models,
     load_cy_model,
     load_g2_data,
-    print_statistics
+    print_statistics,
+    plot_phi_wedge_psi,
+    plot_dphi_ratio,
+    plot_dpsi
 )
 
 def compute_model_mse(g2_data, g2_models):
@@ -204,12 +207,12 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
     skipped = 0
     
     # Diagnostic: Check normalization status and print first point details
-    has_phi_norm = hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance')
-    has_metric_norm = hasattr(g2_models['metric'], 'y_mean') and hasattr(g2_models['metric'], 'y_variance')
+    has_phi_norm = '3form_y_mean' in g2_models and '3form_y_std' in g2_models
+    has_metric_norm = 'metric_y_mean' in g2_models and 'metric_y_std' in g2_models
     
     if has_phi_norm:
-        y_mean_phi_global = g2_models['3form'].y_mean.numpy()
-        y_std_phi_global = np.sqrt(g2_models['3form'].y_variance.numpy())
+        y_mean_phi_global = g2_models['3form_y_mean']
+        y_std_phi_global = g2_models['3form_y_std']
         print(f"\n  Normalization metadata found for 3form model:")
         print(f"    y_mean range: [{np.min(y_mean_phi_global):.6e}, {np.max(y_mean_phi_global):.6e}]")
         print(f"    y_std range: [{np.min(y_std_phi_global):.6e}, {np.max(y_std_phi_global):.6e}]")
@@ -219,8 +222,8 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
         y_std_phi_global = None
     
     if has_metric_norm:
-        y_mean_metric_global = g2_models['metric'].y_mean.numpy()
-        y_std_metric_global = np.sqrt(g2_models['metric'].y_variance.numpy())
+        y_mean_metric_global = g2_models['metric_y_mean']
+        y_std_metric_global = g2_models['metric_y_std']
         print(f"  Normalization metadata found for metric model:")
         print(f"    y_mean range: [{np.min(y_mean_metric_global):.6e}, {np.max(y_mean_metric_global):.6e}]")
         print(f"    y_std range: [{np.min(y_std_metric_global):.6e}, {np.max(y_std_metric_global):.6e}]")
@@ -294,6 +297,9 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
         # from geometry.compression import vec_to_metric_cholesky
         # metric = vec_to_metric_cholesky(metric_vec)
         metric = vec_to_metric(metric_vec)
+        # Ensure metric is 2D (squeeze batch dimension if present)
+        if metric.ndim == 3:
+            metric = metric[0]
         
         # Check for valid metric determinant
         det_metric = np.linalg.det(metric)
@@ -317,6 +323,9 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
             if 'g2_metrics' in data and idx == indices[0]:
                 metric_vec_true_check = data['g2_metrics'][idx]
                 metric_true_tensor = vec_to_metric(metric_vec_true_check)
+                # Ensure metric is 2D (squeeze batch dimension if present)
+                if metric_true_tensor.ndim == 3:
+                    metric_true_tensor = metric_true_tensor[0]
                 det_metric_true = np.linalg.det(metric_true_tensor)
                 eigvals_true = np.linalg.eigvalsh(metric_true_tensor)
                 cond_number_true = np.max(eigvals_true) / np.min(eigvals_true) if np.min(eigvals_true) > 0 else np.inf
@@ -407,18 +416,19 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
     
     vals_dpsi = []
     vals_dphi = []
+    vals_omega2 = []
     vals_ratio = []
     
-    def compute_link_features(idx, rotation=0):
-        """Compute link_point and eta for a given index, using dataset drop_max and drop_one."""
-        base_point = base_points[idx]
-        point_cc = base_point[0:5] + 1.j * base_point[5:]
-        # Use patch indices from dataset
-        drop_max = drop_maxs[idx]
-        drop_one = drop_ones[idx]
+    def compute_link_features_fixed_patch(p, drop_max, drop_one, rotation=0):
+        """Compute link_point and eta from base_point p using FIXED drop_max and drop_one.
+        
+        p is the base_point (10d), drop_max and drop_one come from the dataset.
+        eta is computed from p's coordinates using the fixed patch indices.
+        """
+        point_cc = p[0:5] + 1.j * p[5:]
         # Apply rotation
         point_cc = np.exp(1.j * rotation) * point_cc
-        # Compute eta using dataset patch indices
+        # Compute eta using FIXED dataset patch indices with current point's coordinates
         u_coords = [i for i in range(5) if i != drop_max and i != drop_one]
         eta = np.array([0, 0, 0, 0, 0, 0, 1], dtype=np.float64)
         u_count = 0
@@ -434,45 +444,68 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
             (point_cc / np.linalg.norm(point_cc)).real,
             (point_cc / np.linalg.norm(point_cc)).imag
         ])
-        return link_pt, eta, drop_max, drop_one
+        return link_pt, eta
     
-    def predict_phi_at_point(idx, rotation=0):
-        """Predict φ at a point using trained 3form model, using dataset patch indices and eta."""
-        link_pt, eta, drop_max, drop_one = compute_link_features(idx, rotation)
+    def predict_phi_at_point(p, drop_max, drop_one, rotation=0):
+        """Predict φ at a point using trained 3form model.
+        
+        p: base_point (10d)
+        drop_max, drop_one: fixed patch indices from dataset
+        rotation: global phase rotation
+        """
+        link_pt, eta = compute_link_features_fixed_patch(p, drop_max, drop_one, rotation)
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
         phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
-        if hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance'):
-            y_mean = g2_models['3form'].y_mean.numpy()
-            y_std = np.sqrt(g2_models['3form'].y_variance.numpy())
-            phi_vec = phi_vec_raw * y_std + y_mean
+        # Denormalize if model has normalization metadata
+        if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
+            phi_vec = phi_vec_raw * g2_models['3form_y_std'] + g2_models['3form_y_mean']
         else:
             phi_vec = phi_vec_raw
         phi = vec_to_form(phi_vec, n=7, k=3)
         return phi
     
-    def predict_psi_at_point(idx, rotation=0):
-        """Predict ψ at a point using trained models and Hodge star, using dataset patch indices and eta."""
-        link_pt, eta, drop_max, drop_one = compute_link_features(idx, rotation)
+    def predict_psi_at_point(p, drop_max, drop_one, rotation=0):
+        """Predict ψ at a point using trained models and Hodge star.
+        
+        p: base_point (10d)
+        drop_max, drop_one: fixed patch indices from dataset
+        rotation: global phase rotation
+        """
+        link_pt, eta = compute_link_features_fixed_patch(p, drop_max, drop_one, rotation)
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
         phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
         metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
-        if hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance'):
-            y_mean = g2_models['3form'].y_mean.numpy()
-            y_std = np.sqrt(g2_models['3form'].y_variance.numpy())
-            phi_vec = phi_vec_raw * y_std + y_mean
+        # Denormalize if models have normalization metadata
+        if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
+            phi_vec = phi_vec_raw * g2_models['3form_y_std'] + g2_models['3form_y_mean']
         else:
             phi_vec = phi_vec_raw
-        if hasattr(g2_models['metric'], 'y_mean') and hasattr(g2_models['metric'], 'y_variance'):
-            y_mean = g2_models['metric'].y_mean.numpy()
-            y_std = np.sqrt(g2_models['metric'].y_variance.numpy())
-            metric_vec = metric_vec_raw * y_std + y_mean
+        if 'metric_y_mean' in g2_models and 'metric_y_std' in g2_models:
+            metric_vec = metric_vec_raw * g2_models['metric_y_std'] + g2_models['metric_y_mean']
         else:
             metric_vec = metric_vec_raw
         phi = vec_to_form(phi_vec, n=7, k=3)
         metric = vec_to_metric(metric_vec)
+        # Ensure metric is 2D (squeeze batch dimension if present)
+        if metric.ndim == 3:
+            metric = metric[0]
+        # Check tensor shapes
+        if phi.shape != (7, 7, 7):
+            raise ValueError(f"phi has wrong shape: {phi.shape}, expected (7,7,7)")
+        if metric.shape != (7, 7):
+            raise ValueError(f"metric has wrong shape: {metric.shape}, expected (7,7)")
+        # Check metric validity before Hodge dual
+        det_metric = np.linalg.det(metric)
+        if det_metric <= 0 or not np.isfinite(det_metric):
+            raise ValueError(f"Invalid metric determinant: {det_metric}")
         psi = Hodge_Dual(phi, metric)
+        # Check result validity
+        if not np.all(np.isfinite(psi)):
+            raise ValueError("Hodge dual produced non-finite values")
+        if psi.shape != (7, 7, 7, 7):
+            raise ValueError(f"psi has wrong shape: {psi.shape}, expected (7,7,7,7)")
         return psi
     
     find_max_fn = lambda point_cc: find_max_dQ_coords(point_cc, BASIS)
@@ -481,14 +514,19 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
     skipped_dphi = 0
     
     for idx in tqdm(indices, desc="dψ and dφ check (model)", file=sys.stdout, dynamic_ncols=True):
+        base_point = base_points[idx]
         rotation = rotations[idx]
+        drop_max = int(drop_maxs[idx])
+        drop_one = int(drop_ones[idx])
+        
         # Check dψ using model predictions in neighborhood
+        # drop_max and drop_one are FIXED for all neighborhood points
         try:
             with np.errstate(invalid='ignore', divide='ignore'):
                 dic_psi = sample_numerical_g2_neighborhood_val(
-                    lambda j: predict_psi_at_point(j, rotation), idx, epsilon,
-                    find_max_dQ_coords_fn=find_max_fn,
-                    global_rotation_epsilon=global_rotation_epsilon
+                    lambda p: predict_psi_at_point(p, drop_max, drop_one, rotation),
+                    base_point, epsilon,
+                    drop_max=drop_max, drop_one=drop_one
                 )
                 d_psi = numerical_d_g2(dic_psi, epsilon)
                 norm_dpsi = np.linalg.norm(d_psi)
@@ -496,20 +534,24 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
                     vals_dpsi.append(norm_dpsi)
                 else:
                     skipped_dpsi += 1
-        except:
+        except Exception as e:
             skipped_dpsi += 1
+            # Print first few errors for debugging
+            if skipped_dpsi <= 3:
+                print(f"\n  Warning: Skipped dψ at idx {idx}: {type(e).__name__}: {str(e)[:100]}")
+        
         # Check dφ using model predictions in neighborhood
+        # drop_max and drop_one are FIXED for all neighborhood points
         try:
             with np.errstate(invalid='ignore', divide='ignore'):
                 dic_phi = sample_numerical_g2_neighborhood_val(
-                    lambda j: predict_phi_at_point(j, rotation), idx, epsilon,
-                    find_max_dQ_coords_fn=find_max_fn,
-                    global_rotation_epsilon=global_rotation_epsilon
+                    lambda p: predict_phi_at_point(p, drop_max, drop_one, rotation),
+                    base_point, epsilon,
+                    drop_max=drop_max, drop_one=drop_one
                 )
                 d_phi = numerical_d_g2(dic_phi, epsilon)
                 norm_dphi = np.linalg.norm(d_phi)
                 # Compute ω² for comparison
-                base_point = base_points[idx]
                 cy_metric = np.array(fmodel(np.expand_dims(base_point, axis=0))[0])
                 w = kahler_form_real_matrix(cy_metric)
                 w_R7 = np.pad(w, ((0, 1), (0, 1)), mode='constant')
@@ -517,6 +559,7 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
                 norm_w2 = np.linalg.norm(w2)
                 if np.isfinite(norm_dphi) and np.isfinite(norm_w2) and norm_w2 > 0:
                     vals_dphi.append(norm_dphi)
+                    vals_omega2.append(norm_w2)
                     vals_ratio.append(norm_dphi / norm_w2)
                 else:
                     skipped_dphi += 1
@@ -533,113 +576,10 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
     print(f"  dφ check - Valid: {valid_dphi}/{total_checked} ({valid_dphi/total_checked*100:.2f}%), "
           f"Skipped: {skipped_dphi} ({skipped_dphi/total_checked*100:.2f}%)")
     
-    return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_ratio)
+    return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_omega2), np.array(vals_ratio)
 
 
-def plot_phi_wedge_psi(vals, run_number, output_dir):
-    """Plot φ∧ψ/Vol check results."""
-    plt.figure(figsize=(10, 6))
-    plt.scatter(range(len(vals)), vals, marker='.', alpha=0.7)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
-    plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
-                label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
-    # plt.ylim(6.5, 7.5)  # Temporarily commented out for debugging
-    plt.legend()
-    plt.tight_layout()
-    
-    output_path = output_dir / f"g2_phi_wedge_psi_model_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
 
-
-def plot_dpsi(vals_dpsi, run_number, output_dir):
-    """Plot ||dψ|| distribution."""
-    q_low, q_high = np.percentile(vals_dpsi, [1, 99])
-    vals_filtered = vals_dpsi[(vals_dpsi >= q_low) & (vals_dpsi <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\psi\|$")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dpsi_model_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.xlabel(r"$\|\mathrm{d}\psi\|$")
-    plt.ylabel("Count")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-
-
-def plot_dphi(vals_dphi, run_number, output_dir):
-    """Plot ||dφ|| distribution."""
-    q_low, q_high = np.percentile(vals_dphi, [1, 99])
-    vals_filtered = vals_dphi[(vals_dphi >= q_low) & (vals_dphi <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_model_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.ylabel("Count")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_model_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-
-
-def plot_ratio(vals_ratio, run_number, output_dir):
-    """Plot ||dφ|| / ||ω²|| ratio distribution."""
-    q_low, q_high = np.percentile(vals_ratio, [1, 99])
-    vals_filtered = vals_ratio[(vals_ratio >= q_low) & (vals_ratio <= q_high)]
-    
-    # Scatter plot
-    plt.figure(figsize=(7, 5))
-    plt.plot(vals_ratio, marker='.', linestyle='None', alpha=0.6)
-    plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    plt.legend()
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
-    
-    # Histogram
-    plt.figure(figsize=(7, 5))
-    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
-    plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
-    plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
-    plt.ylabel("Count")
-    plt.legend()
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
 
 
 def main():
@@ -732,7 +672,7 @@ def main():
     plot_phi_wedge_psi(vals_phi_psi, g2_run_number, output_dir)
     
     # Check 2 & 3: dψ = 0 and dφ = ω² (using model predictions in neighborhoods)
-    vals_dpsi, vals_dphi, vals_ratio = check_d_psi_and_d_phi(
+    vals_dpsi, vals_dphi, vals_omega2, vals_ratio = check_d_psi_and_d_phi(
         g2_data, g2_models, fmodel, BASIS, n_points,
         args.epsilon, args.rotation_epsilon
     )
@@ -741,9 +681,13 @@ def main():
     print_statistics("||dφ|| (model predictions)", vals_dphi)
     print_statistics("||dφ||/||ω²|| (model predictions)", vals_ratio)
     
+    # Compute MSE between dφ and ω²
+    if len(vals_dphi) > 0 and len(vals_omega2) > 0:
+        mse_dphi_omega = np.mean((vals_dphi - vals_omega2)**2)
+        print(f"\nMSE between ||dφ|| and ||ω²||: {mse_dphi_omega:.6e}")
+    
     plot_dpsi(vals_dpsi, g2_run_number, output_dir)
-    plot_dphi(vals_dphi, g2_run_number, output_dir)
-    plot_ratio(vals_ratio, g2_run_number, output_dir)
+    plot_dphi_ratio(vals_ratio, g2_run_number, output_dir)
     
     print()
     print("=" * 80)

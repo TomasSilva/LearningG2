@@ -336,6 +336,7 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir):
     plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.ylim(bottom=0)
     plt.legend()
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}.png"
@@ -349,6 +350,7 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir):
     plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.ylabel("Count")
+    plt.ylim(bottom=0)
     plt.legend()
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}_histogram.png"
@@ -370,6 +372,7 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\psi\|$")
+    plt.ylim(bottom=0)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_model_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -382,8 +385,9 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
         plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
         plt.xlabel(r"$\|\mathrm{d}\psi\|$")
         plt.ylabel("Count")
-    plt.tight_layout()
-    output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"Saved plot: {output_path}")
-    plt.close()
+        plt.ylim(bottom=0)
+        plt.tight_layout()
+        output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        print(f"Saved plot: {output_path}")
+        plt.close()
