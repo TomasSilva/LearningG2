@@ -14,10 +14,10 @@ Set up the Python environment following the instructions in [`environment/README
 Train a neural network to learn the Ricci-flat Kähler metric on the Calabi-Yau threefold using the [cymetric](https://github.com/pythoncymetric/cymetric) package:
 
 ```bash
-python run_cy.py --n-points 100000
+python run_cy.py --n-points 200000
 ```
 
-This generates training data for the quintic CY threefold and trains a model that outputs the Hermitian metric components. The trained model is saved to `models/cy_models/cy_metric_model_run{N}.keras`.
+This generates training data for the quintic CY threefold and trains a model that outputs the Hermitian metric components. The trained model is saved to `models/cy_models/cy_metric_model_run{N}.keras`, with a config file.  
 
 ### 2. Generate G2 Sample Data
 Create training data for G2 structure learning by sampling points on the CY and computing the analytical G2 forms:
@@ -29,7 +29,7 @@ python sampling.py
 This produces datasets in `samples/link_data/` containing:
 - Base points and link points on the CY
 - Analytically computed $\varphi$ (3-form) and $\psi$ (4-form)  
-- G2 metrics and local Reeb vector (eta) components
+- G2 metrics and local Reeb vector (eta, $\eta$) components
 - CY base patch coordinate indices for each point
 
 ### 3. Train G2 Models
@@ -52,15 +52,15 @@ Models are saved to `models/link_models/3form_run{N}.keras` and `metric_run{N}.k
 Check that learned models satisfy the G2 structure identities: $\varphi \wedge \psi = 7·Vol(g)$, $d\psi = 0$, and $d\varphi = \omega^2$.
  
 ```bash
-# Check Kählerity of learned CY metric (dω = 0)
-python analysis/cy_kahlerity.py --cy-run-number 1
+# Check Kählerity of learned CY metric ($d\omega = 0$)
+python analysis/cy_kahlerity.py
 
 # Check G2 identities using analytical construction
-python analysis/g2_identities_analytic.py --cy-run-number 1
+python analysis/g2_identities_analytic.py
 
 # Check G2 identities using trained model predictions
 # Use --psi-method star (Hodge star) or --psi-method model (4form model)
-python analysis/g2_identities_model_v2.py --cy-run-number 1 --g2-run-number 1 --psi-method star
+python analysis/g2_identities_model.py
 ```
 
 All scripts output statistics and save diagnostic plots to `plots/` directory.
