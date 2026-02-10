@@ -12,6 +12,7 @@ import tensorflow as tf
 import yaml
 import glob
 import re
+import matplotlib.pyplot as plt
 
 # Setup paths for project root
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -128,27 +129,54 @@ def load_g2_models(g2_run_number, script_dir):
         or None if models not found
     """
     models_dir = script_dir / 'models' / 'link_models'
-    
+
     form_model_path = models_dir / f"3form_run{g2_run_number}.keras"
     metric_model_path = models_dir / f"metric_run{g2_run_number}.keras"
-    
+
     models = {}
-    
+
     if not form_model_path.exists():
         print(f"Warning: 3form model not found: {form_model_path}")
         return None
-    
+
     if not metric_model_path.exists():
         print(f"Warning: Metric model not found: {metric_model_path}")
         return None
-    
+
     models['3form'] = tf.keras.models.load_model(str(form_model_path))
     models['metric'] = tf.keras.models.load_model(str(metric_model_path))
-    
+
+    return_dict = {
+        '3form': models['3form'],
+        'metric': models['metric']
+        }
+
+    # Load normalization statistics from .npz files
+    form_norm_path = models_dir / f"3form_run{g2_run_number}_norm_stats.npz"
+    metric_norm_path = models_dir / f"metric_run{g2_run_number}_norm_stats.npz"
+
+    if form_norm_path.exists():
+        form_norm_data = np.load(form_norm_path)
+        y_mean_form = form_norm_data['y_mean']
+        y_std_form = np.sqrt(form_norm_data['y_variance'])
+        return_dict['3form_y_mean'] = y_mean_form
+        return_dict['3form_y_std'] = y_std_form
+    else:
+        print(f"  WARNING: 3form normalization stats file not found: {form_norm_path}")
+
+    if metric_norm_path.exists():
+        metric_norm_data = np.load(metric_norm_path)
+        y_mean_metric = metric_norm_data['y_mean']
+        y_std_metric = np.sqrt(metric_norm_data['y_variance'])
+        return_dict['metric_y_mean'] = y_mean_metric
+        return_dict['metric_y_std'] = y_std_metric
+    else:
+        print(f"  WARNING: metric normalization stats file not found: {metric_norm_path}")
+
     print(f"Loaded 3form model from run {g2_run_number}")
     print(f"Loaded metric model from run {g2_run_number}")
-    
-    return models
+
+    return  return_dict 
 
 
 def load_cy_model(cy_run_number, data_dir, script_dir):
@@ -181,7 +209,7 @@ def load_cy_model(cy_run_number, data_dir, script_dir):
     BASIS = prepare_basis(BASIS)
     
     with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.UnsafeLoader)
     
     loaded_nn = tf.keras.models.load_model(str(model_path))
     fmodel = MultFSModel(loaded_nn, BASIS, alpha=config['alpha'])
@@ -236,3 +264,78 @@ def print_statistics(name, vals):
     print(f"  Std:    {np.std(vals):.6e}")
     print(f"  Min:    {np.min(vals):.6e}")
     print(f"  Max:    {np.max(vals):.6e}")
+
+def plot_phi_wedge_psi(vals, run_number, output_dir):
+    """Plot φ∧ψ/Vol check results."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(vals, marker='.', linestyle='-', alpha=0.7)
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
+    plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
+                label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
+    # plt.ylim(6.5, 7.5)  # Temporarily commented out for debugging
+    plt.legend()
+    plt.tight_layout()
+    
+    output_path = output_dir / f"g2_phi_wedge_psi_model_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+
+def plot_dphi_ratio(vals_ratio, run_number, output_dir):
+    """Plot ||dφ|| / ||ω²|| ratio distribution."""
+    q_low, q_high = np.percentile(vals_ratio, [1, 99])
+    vals_filtered = vals_ratio[(vals_ratio >= q_low) & (vals_ratio <= q_high)]
+    
+    # Scatter plot
+    plt.figure(figsize=(7, 5))
+    plt.plot(vals_ratio, marker='.', linestyle='None', alpha=0.6)
+    plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.legend()
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+    
+    # Histogram
+    plt.figure(figsize=(7, 5))
+    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+    plt.axvline(x=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
+    plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.ylabel("Count")
+    plt.legend()
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}_histogram.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+
+def plot_dpsi(vals_dpsi, run_number, output_dir):
+    """Plot ||dψ|| distribution."""
+    q_low, q_high = np.percentile(vals_dpsi, [1, 99])
+    vals_filtered = vals_dpsi[(vals_dpsi >= q_low) & (vals_dpsi <= q_high)]
+    
+    # Scatter plot
+    plt.figure(figsize=(7, 5))
+    plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
+    plt.xlabel("Sample Index")
+    plt.ylabel(r"$\|\mathrm{d}\psi\|$")
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dpsi_model_run{run_number}.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()
+    
+    # Histogram
+    plt.figure(figsize=(7, 5))
+    plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
+    plt.xlabel(r"$\|\mathrm{d}\psi\|$")
+    plt.ylabel("Count")
+    plt.tight_layout()
+    output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"Saved plot: {output_path}")
+    plt.close()

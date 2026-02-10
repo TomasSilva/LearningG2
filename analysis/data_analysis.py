@@ -74,41 +74,41 @@ def plot_volume_comparison(data, save_path):
     g2_metrics_data = data["g2_metrics"]
     
     if riem_metrics.ndim == 2 and riem_metrics.shape[1] == 21:
-        # Reconstruct 7x7 symmetric matrices from 21 components (no diagonal)
-        cy_det = []
+        # Reconstruct 6x6 symmetric matrices from 21 components (with diagonal)
+        cy_vol = []
         for components in riem_metrics:
-            mat = np.zeros((7, 7))
-            idx = np.triu_indices(7, k=1)
+            mat = np.zeros((6, 6))
+            idx = np.triu_indices(6)  # Upper triangular WITH diagonal
             mat[idx] = components
-            mat = mat + mat.T + np.eye(7)  # Add diagonal of ones
-            cy_det.append(np.linalg.det(mat))
-        cy_det = np.array(cy_det)
+            mat = mat + mat.T  # Make symmetric
+            np.fill_diagonal(mat, np.diag(mat) / 2)  # Diagonal was added twice
+            cy_vol.append(np.sqrt(np.linalg.det(mat)))
+        cy_vol = np.array(cy_vol)
     else:
-        cy_det = np.linalg.det(riem_metrics)
+        cy_vol = np.sqrt(np.linalg.det(riem_metrics))
     
     if g2_metrics_data.ndim == 2 and g2_metrics_data.shape[1] == 28:
         # Reconstruct 7x7 symmetric matrices from 28 components (with diagonal)
-        g2_det = []
+        g2_vol = []
         for components in g2_metrics_data:
             mat = np.zeros((7, 7))
             idx = np.triu_indices(7)
             mat[idx] = components
             mat = mat + mat.T
             np.fill_diagonal(mat, np.diag(mat) / 2)  # Diagonal was added twice
-            g2_det.append(np.linalg.det(mat))
-        g2_det = np.array(g2_det)
+            g2_vol.append(np.sqrt(np.linalg.det(mat)))
+        g2_vol = np.array(g2_vol)
     else:
-        g2_det = np.linalg.det(g2_metrics_data)
+        g2_vol = np.sqrt(np.linalg.det(g2_metrics_data))
     
     # Calculate Pearson correlation coefficient
-    pmcc = np.corrcoef(cy_det, g2_det)[0, 1]
+    pmcc = np.corrcoef(cy_vol, g2_vol)[0, 1]
     
     plt.figure(figsize=(8, 6))
-    plt.plot(cy_det, g2_det, 'o', markersize=2, label=f'PMCC = {pmcc:.4f}')
+    plt.plot(cy_vol, g2_vol, 'o', markersize=2, label=f'PMCC = {pmcc:.4f}')
     plt.xlabel("Vol CY")
     plt.ylabel("Vol " + r"$G_2$")
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -139,7 +139,7 @@ def plot_3form_histograms(Y, save_path, bins=100, logy=False):
     
     for k in range(35):
         ax = axes[k]
-        ax.hist(Y[:, k], bins=bins, color='steelblue', alpha=0.7)
+        ax.hist(Y[:, k], bins=bins, alpha=0.7)
         ax.set_title(r"$\varphi$" + f"[{indices[k][0]+1},{indices[k][1]+1},{indices[k][2]+1}]", 
                      fontsize=9)
         if logy:
@@ -177,7 +177,7 @@ def plot_metric_histograms(Y, save_path, bins=100, logy=False):
 
     for k in range(28):
         ax = axes[k]
-        ax.hist(Y[:, k], bins=bins, color='coral', alpha=0.7)
+        ax.hist(Y[:, k], bins=bins, alpha=0.7)
         ax.set_title(r"$g_{\varphi}$" + f"[{indices[k][0]},{indices[k][1]}]", 
                      fontsize=9)
         if logy:

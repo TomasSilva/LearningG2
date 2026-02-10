@@ -1,4 +1,3 @@
-'''Geometric functions for mapping between full geometric tensors of interest and vectors of their degree of freedom'''
 # Import libraries
 import numpy as np
 from math import comb, factorial
@@ -124,69 +123,34 @@ def vec_to_form(vectors, n=7, k=3):
 
 def metric_to_vec(matrix):
     """
-    Extract upper triangular components from symmetric matrix.
+    Compress a positive-definite symmetric matrix to its Cholesky lower-triangular components.
     Works on single matrix or batch.
-    
-    Parameters
-    ----------
-    matrix : array_like, shape (7,7) or (B, 7,7)
-        Symmetric matrix/matrices
-        
-    Returns
-    -------
-    ndarray, shape (28,) or (B, 28)
-        Upper triangular components (including diagonal)
+    Returns flattened lower-triangular part (including diagonal).
     """
     matrix = np.asarray(matrix)
     is_single = (matrix.ndim == 2)
-    
     if is_single:
         matrix = matrix[np.newaxis, ...]
-    
     assert matrix.shape[1:] == (7, 7), f"Expected shape (B, 7, 7), got {matrix.shape}"
-    
-    idx = np.triu_indices(7)
-    result = matrix[:, idx[0], idx[1]]
-    
+    chol = np.linalg.cholesky(matrix)
+    idx = np.tril_indices(7)
+    result = chol[:, idx[0], idx[1]]
     return result[0] if is_single else result
-
 
 def vec_to_metric(vector):
     """
-    Reconstruct symmetric matrix from upper triangular components.
+    Reconstruct symmetric positive-definite matrix from Cholesky lower-triangular components.
     Works on single vector or batch.
-    
-    Parameters
-    ----------
-    vector : array_like, shape (28,) or (B, 28)
-        Upper triangular components (including diagonal)
-        
-    Returns
-    -------
-    ndarray, shape (7,7) or (B, 7,7)
-        Reconstructed symmetric matrix/matrices
     """
     vector = np.asarray(vector)
     is_single = (vector.ndim == 1)
-    
     if is_single:
         vector = vector[np.newaxis, ...]
-    
     batch_size = vector.shape[0]
     assert vector.shape[1] == 28, f"Expected 28 components, got {vector.shape[1]}"
-    
-    # Create output matrices
-    output = np.zeros((batch_size, 7, 7), dtype=vector.dtype)
-    
-    # Fill upper triangular
-    idx = np.triu_indices(7)
-    output[:, idx[0], idx[1]] = vector
-    
-    # Mirror to lower triangular (using transpose, but keep diagonal as is)
-    output = output + np.transpose(output, (0, 2, 1))
-    
-    # Diagonal was added twice, so divide by 2
-    diag_idx = np.arange(7)
-    output[:, diag_idx, diag_idx] /= 2
-    
+    chol = np.zeros((batch_size, 7, 7), dtype=vector.dtype)
+    idx = np.tril_indices(7)
+    chol[:, idx[0], idx[1]] = vector
+    # Reconstruct metric: L @ L.T
+    output = np.matmul(chol, np.transpose(chol, (0, 2, 1)))
     return output[0] if is_single else output

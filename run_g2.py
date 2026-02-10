@@ -84,7 +84,7 @@ def main():
     parser.add_argument('--plots-dir', type=str,
                        default='./plots',
                        help='Directory to save plots')
-    parser.add_argument('--task', type=str, choices=['3form', 'metric'],
+    parser.add_argument('--task', type=str, choices=['3form', 'metric', '4form'],
                        default=None,
                        help='Task to train (overrides hps.yaml setting)')
     parser.add_argument('--n-epochs', type=int,
@@ -126,6 +126,10 @@ def main():
     else:
         task = 'metric' if hps.get('metric', False) else '3form'
         print(f"Task (from hps.yaml): Learning G2 {task}")
+
+    # For 4form, check psi vector data
+    if task == '4form':
+        print("Training on psi vector data (4form)...")
     
     # Override epochs from command line if provided
     if args.n_epochs is not None:
@@ -137,13 +141,13 @@ def main():
     # Load and subsample training data
     print(f"Loading training data from {train_data_path}...")
     train_data = np.load(train_data_path)
-    
+
     # Extract cy_run_number from training data if available
     dataset_cy_run = None
     if 'cy_run_number' in train_data.files:
         dataset_cy_run = int(train_data['cy_run_number'][0])
         print(f"Training data was generated using CY model run {dataset_cy_run}")
-    
+
     # Check cymetric_run_number from hps.yaml
     hps_cy_run = hps.get('cymetric_run_number', None)
     if hps_cy_run is not None:
@@ -157,50 +161,98 @@ def main():
             print(f"  But hps.yaml specifies CY run {hps_cy_run}")
             print("  This may lead to inconsistent results.")
             print("=" * 80)
-    
+
     num_samples = hps.get('num_samples', None)
+
+    # For 4form, use psi vector data and filter constant components
+    # Indices that are identically zero: [6, 8, 12, 15, 17, 18, 24, 25, 27, 29, 32, 33]
+    psi_zero_indices = np.array([6, 8, 12, 15, 17, 18, 24, 25, 27, 29, 32, 33])
+    psi_nonzero_indices = np.array([i for i in range(35) if i not in psi_zero_indices])
     
-    if num_samples is not None and num_samples < len(train_data['phis']):
-        print(f"Subsampling {num_samples} training samples (total available: {len(train_data['phis'])})...")
-        rng = np.random.default_rng(42)
-        indices = rng.choice(len(train_data['phis']), size=num_samples, replace=False)
-        # Memory efficient: only load selected indices
-        train_data_subset = {key: train_data[key][indices] for key in train_data.files}
+    if task == '4form':
+        psi_key = 'psis_vec' if 'psis_vec' in train_data.files else 'psis'
+        psi_data = train_data[psi_key]
+        n_points = psi_data.shape[0]
+        if num_samples is not None and num_samples < n_points:
+            print(f"Subsampling {num_samples} training samples (total available: {n_points})...")
+            rng = np.random.default_rng(42)
+            indices = rng.choice(n_points, size=num_samples, replace=False)
+            train_data_subset = {key: train_data[key][indices] for key in train_data.files}
+        else:
+            train_data_subset = {key: train_data[key][:] for key in train_data.files}
+            num_samples = n_points
+        print(f"Using {num_samples} training samples")
+        # Prepare X and Y for psi
+        X_train = np.concatenate([
+            train_data_subset['link_points'],
+            train_data_subset['etas'],
+            train_data_subset['drop_maxs'][:, None],
+            train_data_subset['drop_ones'][:, None]
+        ], axis=1)
+        # Filter to non-zero components only (35 -> 23)
+        Y_train_full = train_data_subset[psi_key]
+        Y_train = Y_train_full[:, psi_nonzero_indices]
+        print(f"Training input shape: {X_train.shape}")
+        print(f"Training output shape: {Y_train.shape} (reduced from {Y_train_full.shape[1]} to {Y_train.shape[1]} non-zero components)")
     else:
-        train_data_subset = {key: train_data[key][:] for key in train_data.files}
-        num_samples = len(train_data_subset['phis'])
-    
-    print(f"Using {num_samples} training samples")
-    
-    # Prepare training X and Y
-    X_train, Y_train = prepare_data(train_data_subset, task=task)
-    print(f"Training input shape: {X_train.shape}")
-    print(f"Training output shape: {Y_train.shape}")
+        if num_samples is not None and num_samples < len(train_data['phis']):
+            print(f"Subsampling {num_samples} training samples (total available: {len(train_data['phis'])})...")
+            rng = np.random.default_rng(42)
+            indices = rng.choice(len(train_data['phis']), size=num_samples, replace=False)
+            train_data_subset = {key: train_data[key][indices] for key in train_data.files}
+        else:
+            train_data_subset = {key: train_data[key][:] for key in train_data.files}
+            num_samples = len(train_data_subset['phis'])
+        print(f"Using {num_samples} training samples")
+        # Prepare training X and Y
+        X_train, Y_train = prepare_data(train_data_subset, task=task)
+        print(f"Training input shape: {X_train.shape}")
+        print(f"Training output shape: {Y_train.shape}")
     
     # Load and subsample validation data if validation is enabled
     validate = hps.get('validate', True)
     X_val, Y_val = None, None
-    
+
     if validate:
         print(f"Loading validation data from {val_data_path}...")
         val_data = np.load(val_data_path)
         num_val_samples = hps.get('num_val_samples', None)
-        
-        if num_val_samples is not None and num_val_samples < len(val_data['phis']):
-            print(f"Subsampling {num_val_samples} validation samples (total available: {len(val_data['phis'])})...")
-            rng = np.random.default_rng(43)  # Different seed for validation
-            val_indices = rng.choice(len(val_data['phis']), size=num_val_samples, replace=False)
-            val_data_subset = {key: val_data[key][val_indices] for key in val_data.files}
+        if task == '4form':
+            psi_key = 'psis_vec' if 'psis_vec' in val_data.files else 'psis'
+            n_val_points = val_data[psi_key].shape[0]
+            if num_val_samples is not None and num_val_samples < n_val_points:
+                print(f"Subsampling {num_val_samples} validation samples (total available: {n_val_points})...")
+                rng = np.random.default_rng(43)
+                val_indices = rng.choice(n_val_points, size=num_val_samples, replace=False)
+                val_data_subset = {key: val_data[key][val_indices] for key in val_data.files}
+            else:
+                val_data_subset = {key: val_data[key][:] for key in val_data.files}
+                num_val_samples = n_val_points
+            print(f"Using {num_val_samples} validation samples")
+            X_val = np.concatenate([
+                val_data_subset['link_points'],
+                val_data_subset['etas'],
+                val_data_subset['drop_maxs'][:, None],
+                val_data_subset['drop_ones'][:, None]
+            ], axis=1)
+            # Filter to non-zero components only
+            Y_val_full = val_data_subset[psi_key]
+            Y_val = Y_val_full[:, psi_nonzero_indices]
+            print(f"Validation input shape: {X_val.shape}")
+            print(f"Validation output shape: {Y_val.shape} (reduced from {Y_val_full.shape[1]} to {Y_val.shape[1]} non-zero components)")
         else:
-            val_data_subset = {key: val_data[key][:] for key in val_data.files}
-            num_val_samples = len(val_data_subset['phis'])
-        
-        print(f"Using {num_val_samples} validation samples")
-        
-        # Prepare validation X and Y
-        X_val, Y_val = prepare_data(val_data_subset, task=task)
-        print(f"Validation input shape: {X_val.shape}")
-        print(f"Validation output shape: {Y_val.shape}")
+            if num_val_samples is not None and num_val_samples < len(val_data['phis']):
+                print(f"Subsampling {num_val_samples} validation samples (total available: {len(val_data['phis'])})...")
+                rng = np.random.default_rng(43)  # Different seed for validation
+                val_indices = rng.choice(len(val_data['phis']), size=num_val_samples, replace=False)
+                val_data_subset = {key: val_data[key][val_indices] for key in val_data.files}
+            else:
+                val_data_subset = {key: val_data[key][:] for key in val_data.files}
+                num_val_samples = len(val_data_subset['phis'])
+            print(f"Using {num_val_samples} validation samples")
+            X_val, Y_val = prepare_data(val_data_subset, task=task)
+            print(f"Validation input shape: {X_val.shape}")
+            print(f"Validation output shape: {Y_val.shape}")
     else:
         print("Validation disabled")
     
@@ -276,7 +328,7 @@ def main():
     # Get next run number for this task
     run_number = get_next_run_number(output_dir, task)
     run_name = f"{task}_run{run_number}"
-    
+
     # Set up paths
     model_path = output_dir / f"{run_name}.keras"
     
@@ -325,6 +377,26 @@ def main():
         checkpoint_path=model_path,
     )
     
+    # For 4form, expand predictions back to 35 dimensions
+    if task == '4form':
+        print("Expanding 4form predictions from 23 to 35 components...")
+        Y_pred_expanded = np.zeros((Y_pred.shape[0], 35))
+        Y_pred_expanded[:, psi_nonzero_indices] = Y_pred
+        Y_pred = Y_pred_expanded
+        
+        Y_test_expanded = np.zeros((Y_test.shape[0], 35))
+        Y_test_expanded[:, psi_nonzero_indices] = Y_test
+        Y_test = Y_test_expanded
+        
+        # Save the index mapping for later use
+        index_map_path = str(model_path).replace('.keras', '_index_map.npz')
+        np.savez(
+            index_map_path,
+            psi_zero_indices=psi_zero_indices,
+            psi_nonzero_indices=psi_nonzero_indices
+        )
+        print(f"Saved index mapping to: {index_map_path}")
+    
     print()
     print("=" * 80)
     print("Training complete!")
@@ -349,9 +421,20 @@ def main():
     history_plot_path = plots_dir / f"{run_name}_history.png"
     plot_history(hist, save_path=history_plot_path)
     
-    # Prediction plot
-    pred_plot_path = plots_dir / f"{run_name}_predictions.png"
-    plot_true_vs_pred(Y_test, Y_pred, save_path=pred_plot_path)
+    # Prediction plot (at normalized scale for better PMCC)
+    # Normalize predictions and targets if y_norm was used
+    x_norm, y_norm = norms
+    if y_norm is not None:
+        y_mean = y_norm.mean.numpy()
+        y_std = np.sqrt(y_norm.variance.numpy())
+        Y_test_norm = (Y_test - y_mean) / y_std
+        Y_pred_norm = (Y_pred - y_mean) / y_std
+        print("Plotting predictions at normalized scale...")
+        pred_plot_path = plots_dir / f"{run_name}_predictions.png"
+        plot_true_vs_pred(Y_test_norm, Y_pred_norm, save_path=pred_plot_path)
+    else:
+        pred_plot_path = plots_dir / f"{run_name}_predictions.png"
+        plot_true_vs_pred(Y_test, Y_pred, save_path=pred_plot_path)
     
     print()
     print("=" * 80)

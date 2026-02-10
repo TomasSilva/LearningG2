@@ -38,7 +38,7 @@ from analysis.utils import (
 )
 
 
-def compute_domega_norm(fmodel, BASIS, points, epsilon=1e-12, desc="Computing dω"):
+def compute_domega_norm(fmodel, BASIS, points, epsilon=1e-5, desc="Computing dω"):
     """
     Compute ||dω|| for a set of points.
     
@@ -110,7 +110,6 @@ def plot_domega_norms(vals, dataset_name, save_path=None):
     plt.plot(vals, 'o-', markersize=3, alpha=0.7)
     plt.xlabel("Data Index")
     plt.ylabel(r"$\|\mathsf{d}\omega\|$")
-    plt.grid(True, alpha=0.3)
     
     # Add statistics
     vals_array = np.array(vals)
@@ -142,7 +141,7 @@ def main():
                        help='Number of training points to check')
     parser.add_argument('--n-val', type=int, default=None,
                        help='Number of validation points to check (default: all)')
-    parser.add_argument('--epsilon', type=float, default=1e-12,
+    parser.add_argument('--epsilon', type=float, default=1e-5,
                        help='Epsilon for numerical derivative')
     parser.add_argument('--output-dir', type=str, default='./plots',
                        help='Directory to save output plots')

@@ -283,23 +283,25 @@ def train_regressor(
     Returns
     -------
     model : keras.Model
-        Trained model (outputs TRUE SCALE predictions; NN trains in normalized space internally if enabled)
+        Trained model (outputs in normalized space if normalize_outputs=True)
     history : keras.callbacks.History
         Training history
     test_data : tuple
-        (X_test, Y_test, Y_pred) - all in true scale
+        (X_test, Y_test, Y_pred) - X_test in true scale, Y_test in true scale,
+        Y_pred in TRUE SCALE (denormalized if normalize_outputs=True)
     normalizers : tuple
-        (x_norm, y_norm) - the normalization layers (x_norm embedded if normalize_inputs=True, 
-        y_norm used for loss computation if normalize_outputs=True but not stored in model)
+        (x_norm, y_norm) - the normalization layers
     test_metrics : dict
-        Test metrics (loss computed in normalized space if normalize_outputs=True)
+        Test metrics (computed in normalized space if normalize_outputs=True)
         
     Notes
     -----
-    When normalize_outputs=True, the model outputs at true scale by denormalizing internally,
-    but the y_norm layer is not stored in the model graph. It's only used during training
-    for computing loss in normalized space. When loading a saved model, you cannot retrieve
-    y_norm, but the model will still output correct true-scale predictions.
+    When normalize_outputs=True:
+    - Model outputs predictions in NORMALIZED space
+    - Training and validation losses are computed in normalized space
+    - Returned Y_pred is DENORMALIZED to true scale for convenience
+    - To get normalized predictions: Y_norm = (model.predict(X) - y_mean) / y_std
+      where y_mean = y_norm.mean.numpy(), y_std = sqrt(y_norm.variance.numpy())
     """
     if val_batch is None:
         val_batch = batch
@@ -370,17 +372,20 @@ def train_regressor(
         else:
             x = inp
         
-        # Base network
-        yhat_internal = base(x)
-        
-        # Output denormalization (optional)
-        if normalize_outputs:
-            # Denormalize outputs to true scale: output = normalized * std + mean
-            yhat = yhat_internal * tf.sqrt(y_norm.variance) + y_norm.mean
-        else:
-            yhat = yhat_internal
+        # Base network - outputs in same space as training targets
+        # (normalized if normalize_outputs=True, true scale otherwise)
+        yhat = base(x)
         
         model = keras.Model(inp, yhat, name=f"regressor_{task}")
+        
+        # Store normalization metadata in the model for later retrieval
+        # This allows us to recover normalization info from saved models
+        if normalize_inputs and x_norm is not None:
+            model.x_mean = x_norm.mean
+            model.x_variance = x_norm.variance
+        if normalize_outputs and y_norm is not None:
+            model.y_mean = y_norm.mean
+            model.y_variance = y_norm.variance
 
     # Compile model
     # Note: When normalize_outputs=True, loss is computed in normalized space during training
@@ -446,6 +451,16 @@ def train_regressor(
             monitor="val_loss", 
             save_best_only=True
         ))
+        
+        # Save normalization statistics separately if they exist
+        # (Keras doesn't save custom Python attributes, so we save them as .npz)
+        if normalize_outputs and y_norm is not None:
+            norm_stats_path = str(checkpoint_path).replace('.keras', '_norm_stats.npz')
+            np.savez(
+                norm_stats_path,
+                y_mean=y_norm.mean.numpy(),
+                y_variance=y_norm.variance.numpy()
+            )
     else:
         val_ds = None
         cb.append(keras.callbacks.ReduceLROnPlateau(
@@ -459,6 +474,15 @@ def train_regressor(
             monitor="loss", 
             save_best_only=True
         ))
+        
+        # Save normalization statistics separately if they exist
+        if normalize_outputs and y_norm is not None:
+            norm_stats_path = str(checkpoint_path).replace('.keras', '_norm_stats.npz')
+            np.savez(
+                norm_stats_path,
+                y_mean=y_norm.mean.numpy(),
+                y_variance=y_norm.variance.numpy()
+            )
 
     hist = model.fit(
         train_ds,
@@ -468,12 +492,23 @@ def train_regressor(
         verbose=verbosity
     )
 
-    # Model now outputs TRUE SCALE predictions directly
-    Ypred = model.predict(Xte, batch_size=8192, verbose=0)
+    # Get predictions (in normalized space if normalize_outputs=True)
+    Ypred_raw = model.predict(Xte, batch_size=8192, verbose=0)
+    
+    # Denormalize predictions to true scale if needed
+    if normalize_outputs and y_norm is not None:
+        y_mean = y_norm.mean.numpy()
+        y_std = np.sqrt(y_norm.variance.numpy())
+        Ypred = Ypred_raw * y_std + y_mean
+        # Normalize test targets for evaluation
+        Yte_eval = (Yte - y_mean) / y_std
+    else:
+        Ypred = Ypred_raw
+        Yte_eval = Yte
 
-    # Get model metrics (loss computed in normalized space internally)
+    # Get model metrics (computed in same space as training)
     test_metrics = model.evaluate(
-        Xte, Yte, batch_size=8192, verbose=0, return_dict=True
+        Xte, Yte_eval, batch_size=8192, verbose=0, return_dict=True
     )
 
     return model, hist, (Xte, Yte, Ypred), (x_norm, y_norm), test_metrics
@@ -526,7 +561,6 @@ def plot_history(hist, save_path=None):
     plt.yscale("log")
     plt.xlabel("epoch")
     plt.ylabel("MSE (normalized)")
-    plt.grid(True)
     plt.legend()
     plt.tight_layout()
     
@@ -549,7 +583,6 @@ def plot_history(hist, save_path=None):
             plt.yscale("log")
             plt.xlabel("epoch")
             plt.ylabel(f"{k} (normalized)")
-            plt.grid(True)
             plt.legend()
             plt.tight_layout()
             
@@ -595,7 +628,6 @@ def plot_true_vs_pred(Y_true, Y_pred, n_points=30000, seed=0, save_path=None):
     plt.xlabel("True")
     plt.ylabel("Predicted")
     plt.legend()
-    plt.grid(True)
     plt.tight_layout()
     
     if save_path:

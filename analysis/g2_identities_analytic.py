@@ -119,8 +119,8 @@ def check_phi_wedge_psi(data, n_points=100):
     return np.array(vals)
 
 
-def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-12, 
-                          global_rotation_epsilon=1e-12):
+def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-5, 
+                          global_rotation_epsilon=1e-5):
     """Check dψ = 0 and dφ = ω²."""
     base_points = data['base_points']
     
@@ -189,9 +189,8 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
     plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
     plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
                 label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
-    plt.ylim(6.5, 7.5)
+    # plt.ylim(6.5, 7.5)  # Temporarily commented out for debugging
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
     output_path = output_dir / f"g2_phi_wedge_psi_run{run_number}.png"
@@ -211,7 +210,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\psi\|$")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -223,7 +221,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\psi\|$")
     plt.ylabel("Count")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -242,7 +239,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -254,7 +250,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
     plt.ylabel("Count")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -275,7 +270,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -289,7 +283,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.ylabel("Count")
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -309,9 +302,9 @@ def main():
                        help='Directory containing CY data')
     parser.add_argument('--n-points', type=int, default=None,
                        help='Number of points for all identity checks (default: all, or random sample if specified)')
-    parser.add_argument('--epsilon', type=float, default=1e-12,
+    parser.add_argument('--epsilon', type=float, default=1e-5,
                        help='Epsilon for numerical derivative')
-    parser.add_argument('--rotation-epsilon', type=float, default=1e-12,
+    parser.add_argument('--rotation-epsilon', type=float, default=1e-5,
                        help='Epsilon for global phase rotation')
     parser.add_argument('--output-dir', type=str, default='./plots',
                        help='Directory to save output plots')

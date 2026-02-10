@@ -10,16 +10,12 @@ This script verifies the following G2 identities using trained model predictions
 where φ and metric are predicted by trained neural networks.
 """
 
-import sys
+import os, sys
 import argparse
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import tensorflow as tf
-import yaml
-import glob
-import re
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -38,7 +34,7 @@ from geometry.numerical_exterior_derivative import (
     numerical_d_g2,
     quintic_solver
 )
-from geometry.compression import form_to_vec, vec_to_form, metric_to_vec, vec_to_metric
+from geometry.compression import vec_to_form, vec_to_metric
 from geometry.numerical_star_R7 import Hodge_Dual
 
 # Import analysis utilities
@@ -50,7 +46,6 @@ from analysis.utils import (
     load_g2_data,
     print_statistics
 )
-
 
 def compute_model_mse(g2_data, g2_models):
     """Compute MSE for 3form and metric models on test data."""
@@ -67,17 +62,90 @@ def compute_model_mse(g2_data, g2_models):
     
     # Evaluate 3form model
     Y_true_3form = g2_data['phis']
-    Y_pred_3form = g2_models['3form'].predict(X, verbose=0)
+    Y_pred_3form_raw = g2_models['3form'].predict(X, verbose=0)
+    
+    # Denormalize predictions if model has normalization metadata
+    if '3form_y_mean' in g2_models and '3form_y_std' in g2_models:
+        y_mean_phi = g2_models['3form_y_mean']
+        y_std_phi = g2_models['3form_y_std']
+        Y_pred_3form = Y_pred_3form_raw * y_std_phi + y_mean_phi
+        
+        # Print normalization diagnostics
+        print(f"\n  3form normalization statistics:")
+        print(f"    y_mean range: [{np.min(y_mean_phi):.6e}, {np.max(y_mean_phi):.6e}]")
+        print(f"    y_std range: [{np.min(y_std_phi):.6e}, {np.max(y_std_phi):.6e}]")
+        print(f"    y_std mean: {np.mean(y_std_phi):.6e}")
+        print(f"    y_std median: {np.median(y_std_phi):.6e}")
+        print(f"    Raw prediction range: [{np.min(Y_pred_3form_raw):.6e}, {np.max(Y_pred_3form_raw):.6e}]")
+        print(f"    Denormalized prediction range: [{np.min(Y_pred_3form):.6e}, {np.max(Y_pred_3form):.6e}]")
+        print(f"    True data range: [{np.min(Y_true_3form):.6e}, {np.max(Y_true_3form):.6e}]")
+    else:
+        Y_pred_3form = Y_pred_3form_raw
+        print(f"  Warning: 3form model has no normalization metadata!")
+    
     mse_3form = np.mean((Y_true_3form - Y_pred_3form)**2)
+    mae_3form = np.mean(np.abs(Y_true_3form - Y_pred_3form))
     results['3form'] = mse_3form
     print(f"  3form model MSE: {mse_3form:.6e}")
+    print(f"  3form model MAE: {mae_3form:.6e}")
+    print(f"  3form relative error (MAE/mean_abs_true): {mae_3form / np.mean(np.abs(Y_true_3form)):.6e}")
     
     # Evaluate metric model
     Y_true_metric = g2_data['g2_metrics']
-    Y_pred_metric = g2_models['metric'].predict(X, verbose=0)
+    Y_pred_metric_raw = g2_models['metric'].predict(X, verbose=0)
+    # Denormalize predictions if model has normalization metadata
+    if 'metric_y_mean' in g2_models and 'metric_y_std' in g2_models:
+        y_mean_metric = g2_models['metric_y_mean']
+        y_std_metric = g2_models['metric_y_std']
+        Y_pred_metric = Y_pred_metric_raw * y_std_metric + y_mean_metric
+        
+        # Print normalization diagnostics
+        print(f"\n  metric normalization statistics:")
+        print(f"    y_mean range: [{np.min(y_mean_metric):.6e}, {np.max(y_mean_metric):.6e}]")
+        print(f"    y_std range: [{np.min(y_std_metric):.6e}, {np.max(y_std_metric):.6e}]")
+        print(f"    y_std mean: {np.mean(y_std_metric):.6e}")
+        print(f"    y_std median: {np.median(y_std_metric):.6e}")
+        print(f"    Raw prediction range: [{np.min(Y_pred_metric_raw):.6e}, {np.max(Y_pred_metric_raw):.6e}]")
+        print(f"    Denormalized prediction range: [{np.min(Y_pred_metric):.6e}, {np.max(Y_pred_metric):.6e}]")
+        print(f"    True data range: [{np.min(Y_true_metric):.6e}, {np.max(Y_true_metric):.6e}]")
+    else:
+        Y_pred_metric = Y_pred_metric_raw
+        print(f"  Warning: metric model has no normalization metadata!")
+    
     mse_metric = np.mean((Y_true_metric - Y_pred_metric)**2)
+    mae_metric = np.mean(np.abs(Y_true_metric - Y_pred_metric))
     results['metric'] = mse_metric
     print(f"  Metric model MSE: {mse_metric:.6e}")
+    print(f"  Metric model MAE: {mae_metric:.6e}")
+    print(f"  Metric relative error (MAE/mean_abs_true): {mae_metric / np.mean(np.abs(Y_true_metric)):.6e}")
+    
+    # Check a single point in detail to understand geometric error propagation
+    print(f"\n  Single-point diagnostic (first test sample):")
+    idx = 0
+    phi_vec_true = Y_true_3form[idx]
+    phi_vec_pred = Y_pred_3form[idx]
+    metric_vec_true = Y_true_metric[idx]
+    metric_vec_pred = Y_pred_metric[idx]
+    
+    from geometry.compression import vec_to_form, vec_to_metric
+    phi_true_tensor = vec_to_form(phi_vec_true, n=7, k=3)
+    phi_pred_tensor = vec_to_form(phi_vec_pred, n=7, k=3)
+    metric_true_tensor = vec_to_metric(metric_vec_true)
+    metric_pred_tensor = vec_to_metric(metric_vec_pred)
+    
+    print(f"    ||phi_true||: {np.linalg.norm(phi_true_tensor):.6e}")
+    print(f"    ||phi_pred||: {np.linalg.norm(phi_pred_tensor):.6e}")
+    print(f"    ||phi_error||: {np.linalg.norm(phi_true_tensor - phi_pred_tensor):.6e}")
+    print(f"    phi relative error: {np.linalg.norm(phi_true_tensor - phi_pred_tensor) / np.linalg.norm(phi_true_tensor):.6e}")
+    
+    print(f"    det(metric_true): {np.linalg.det(metric_true_tensor):.6e}")
+    print(f"    det(metric_pred): {np.linalg.det(metric_pred_tensor):.6e}")
+    print(f"    det relative error: {np.abs(np.linalg.det(metric_true_tensor) - np.linalg.det(metric_pred_tensor)) / np.abs(np.linalg.det(metric_true_tensor)):.6e}")
+    
+    # Check component-wise vs geometric error
+    print(f"    Component-wise phi MAE: {np.mean(np.abs(phi_vec_true - phi_vec_pred)):.6e}")
+    print(f"    Geometric phi error: {np.linalg.norm(phi_true_tensor - phi_pred_tensor):.6e}")
+    print(f"    Error amplification factor: {np.linalg.norm(phi_true_tensor - phi_pred_tensor) / np.mean(np.abs(phi_vec_true - phi_vec_pred)):.6e}")
     
     return results
 
@@ -131,7 +199,71 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
         print(f"\nChecking φ ∧ ψ = 7·Vol(g_φ) on all {n_points} points (using model predictions)...")
     
     vals = []
-    for idx in tqdm(indices, desc="φ∧ψ check (model)"):
+    volumes = []
+    prods = []
+    skipped = 0
+    
+    # Diagnostic: Check normalization status and print first point details
+    has_phi_norm = hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance')
+    has_metric_norm = hasattr(g2_models['metric'], 'y_mean') and hasattr(g2_models['metric'], 'y_variance')
+    
+    if has_phi_norm:
+        y_mean_phi_global = g2_models['3form'].y_mean.numpy()
+        y_std_phi_global = np.sqrt(g2_models['3form'].y_variance.numpy())
+        print(f"\n  Normalization metadata found for 3form model:")
+        print(f"    y_mean range: [{np.min(y_mean_phi_global):.6e}, {np.max(y_mean_phi_global):.6e}]")
+        print(f"    y_std range: [{np.min(y_std_phi_global):.6e}, {np.max(y_std_phi_global):.6e}]")
+    else:
+        print(f"\n  WARNING: No normalization metadata for 3form model!")
+        y_mean_phi_global = None
+        y_std_phi_global = None
+    
+    if has_metric_norm:
+        y_mean_metric_global = g2_models['metric'].y_mean.numpy()
+        y_std_metric_global = np.sqrt(g2_models['metric'].y_variance.numpy())
+        print(f"  Normalization metadata found for metric model:")
+        print(f"    y_mean range: [{np.min(y_mean_metric_global):.6e}, {np.max(y_mean_metric_global):.6e}]")
+        print(f"    y_std range: [{np.min(y_std_metric_global):.6e}, {np.max(y_std_metric_global):.6e}]")
+    else:
+        print(f"  WARNING: No normalization metadata for metric model!")
+        y_mean_metric_global = None
+        y_std_metric_global = None
+    
+    # Diagnostic: Check first point in detail
+    if len(indices) > 0:
+        idx0 = indices[0]
+        link_pt0 = link_points[idx0]
+        eta0 = etas[idx0]
+        drop_max0 = drop_maxs[idx0]
+        drop_one0 = drop_ones[idx0]
+        X_input0 = np.concatenate([link_pt0, eta0, [drop_max0, drop_one0]])
+        X_input0 = np.expand_dims(X_input0, axis=0)
+        
+        phi_vec_raw0 = g2_models['3form'].predict(X_input0, verbose=0)[0]
+        metric_vec_raw0 = g2_models['metric'].predict(X_input0, verbose=0)[0]
+        
+        phi_vec_true0 = data['phis'][idx0] if 'phis' in data else None
+        metric_vec_true0 = data['g2_metrics'][idx0] if 'g2_metrics' in data else None
+        
+        print(f"\n  First point diagnostic (index {idx0}):")
+        print(f"    Raw phi prediction range: [{np.min(phi_vec_raw0):.6e}, {np.max(phi_vec_raw0):.6e}]")
+        print(f"    Raw metric prediction range: [{np.min(metric_vec_raw0):.6e}, {np.max(metric_vec_raw0):.6e}]")
+        
+        if has_phi_norm:
+            phi_vec_denorm0 = phi_vec_raw0 * y_std_phi_global + y_mean_phi_global
+            print(f"    Denormalized phi range: [{np.min(phi_vec_denorm0):.6e}, {np.max(phi_vec_denorm0):.6e}]")
+            if phi_vec_true0 is not None:
+                print(f"    True phi range: [{np.min(phi_vec_true0):.6e}, {np.max(phi_vec_true0):.6e}]")
+                print(f"    Phi MAE (denorm vs true): {np.mean(np.abs(phi_vec_denorm0 - phi_vec_true0)):.6e}")
+        
+        if has_metric_norm:
+            metric_vec_denorm0 = metric_vec_raw0 * y_std_metric_global + y_mean_metric_global
+            print(f"    Denormalized metric range: [{np.min(metric_vec_denorm0):.6e}, {np.max(metric_vec_denorm0):.6e}]")
+            if metric_vec_true0 is not None:
+                print(f"    True metric range: [{np.min(metric_vec_true0):.6e}, {np.max(metric_vec_true0):.6e}]")
+                print(f"    Metric MAE (denorm vs true): {np.mean(np.abs(metric_vec_denorm0 - metric_vec_true0)):.6e}")
+    
+    for idx in tqdm(indices, desc="φ∧ψ check (model)", file=sys.stdout, dynamic_ncols=True):
         # Prepare model input: link_point (10) + eta (7) + patch indices (2) = 19
         link_pt = link_points[idx]
         eta = etas[idx]
@@ -141,26 +273,119 @@ def check_phi_wedge_psi(data, g2_models, n_points=100):
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
         
-        # Predict φ and G2 metric
-        phi_vec = g2_models['3form'].predict(X_input, verbose=0)[0]
-        metric_vec = g2_models['metric'].predict(X_input, verbose=0)[0]
-        
+        # Predict φ and G2 metric (raw normalized outputs)
+        phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
+        metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
+
+        # Denormalize predictions if models have normalization metadata
+        if has_phi_norm:
+            phi_vec = phi_vec_raw * y_std_phi_global + y_mean_phi_global
+        else:
+            phi_vec = phi_vec_raw
+
+        if has_metric_norm:
+            metric_vec = metric_vec_raw * y_std_metric_global + y_mean_metric_global
+        else:
+            metric_vec = metric_vec_raw
+
+        # Convert vector outputs to tensor forms
         phi = vec_to_form(phi_vec, n=7, k=3)
+        # If using Cholesky, decode here:
+        # from geometry.compression import vec_to_metric_cholesky
+        # metric = vec_to_metric_cholesky(metric_vec)
         metric = vec_to_metric(metric_vec)
         
+        # Check for valid metric determinant
+        det_metric = np.linalg.det(metric)
+        if det_metric <= 0 or not np.isfinite(det_metric):
+            skipped += 1
+            continue
+        
+        # Check metric condition number (ill-conditioned metrics cause numerical issues)
+        eigvals = np.linalg.eigvalsh(metric)
+        min_eigval = np.min(eigvals)
+        max_eigval = np.max(eigvals)
+        cond_number = max_eigval / min_eigval if min_eigval > 0 else np.inf
+        
+        # Diagnostic: Check metric quality (only for first few points)
+        if idx == indices[0] or (len(vals) == 0 and idx == indices[1]):
+            print(f"    Point {idx} metric diagnostics:")
+            print(f"      det(metric): {det_metric:.6e}")
+            print(f"      min eigval: {min_eigval:.6e}")
+            print(f"      max eigval: {max_eigval:.6e}")
+            print(f"      condition number: {cond_number:.6e}")
+            if 'g2_metrics' in data and idx == indices[0]:
+                metric_vec_true_check = data['g2_metrics'][idx]
+                metric_true_tensor = vec_to_metric(metric_vec_true_check)
+                det_metric_true = np.linalg.det(metric_true_tensor)
+                eigvals_true = np.linalg.eigvalsh(metric_true_tensor)
+                cond_number_true = np.max(eigvals_true) / np.min(eigvals_true) if np.min(eigvals_true) > 0 else np.inf
+                print(f"      True det(metric): {det_metric_true:.6e}")
+                print(f"      True condition number: {cond_number_true:.6e}")
+                print(f"      det ratio (pred/true): {det_metric / det_metric_true:.6e}")
+        
+        # Skip if metric is too ill-conditioned (could cause numerical issues in Hodge dual)
+        # Note: True metrics also have condition numbers ~10^9, so we can't filter too aggressively
+        if min_eigval < 1e-15 or cond_number > 1e15:
+            skipped += 1
+            continue
+        
         # Compute ψ = ⋆_{g_G2} φ using the Hodge star operator
-        psi = Hodge_Dual(phi, metric)
+        # For ill-conditioned metrics, the standard Hodge_Dual may be unstable
+        # We'll try it and catch numerical errors
+        with np.errstate(invalid='ignore', divide='ignore', over='ignore'):
+            try:
+                psi = Hodge_Dual(phi, metric)
+                # Check if result is reasonable
+                psi_norm = np.linalg.norm(psi)
+                if not np.isfinite(psi_norm) or psi_norm > 1e10:
+                    # Result is clearly wrong (too large or NaN)
+                    skipped += 1
+                    continue
+            except (np.linalg.LinAlgError, ValueError, FloatingPointError) as e:
+                # Numerical error in Hodge dual computation
+                skipped += 1
+                continue
         
         prod = wedge(phi, psi)[0, 1, 2, 3, 4, 5, 6]
-        vol = np.sqrt(np.linalg.det(metric))
-        
-        vals.append(prod / vol)
+        vol = np.sqrt(det_metric)
+        # Check for numerical issues
+        if not np.isfinite(prod) or not np.isfinite(vol) or abs(vol) < 1e-20:
+            skipped += 1
+            continue
+        val = prod / vol
+        # Skip if result is NaN or infinite
+        if not np.isfinite(val):
+            skipped += 1
+            continue
+        vals.append(val)
+        volumes.append(vol)
+        prods.append(prod)
     
+    # Print statistics
+    total_checked = len(indices)
+    valid_count = len(vals)
+    skip_proportion = skipped / total_checked * 100 if total_checked > 0 else 0
+    print(f"\n  Valid points: {valid_count}/{total_checked} ({100-skip_proportion:.2f}%)")
+    print(f"  Skipped (invalid): {skipped}/{total_checked} ({skip_proportion:.2f}%)")
+    if valid_count > 0:
+        volumes_arr = np.array(volumes)
+        prods_arr = np.array(prods)
+        print("\n  Volume statistics:")
+        print(f"    min: {np.min(volumes_arr):.6e}")
+        print(f"    max: {np.max(volumes_arr):.6e}")
+        print(f"    mean: {np.mean(volumes_arr):.6e}")
+        print(f"    std: {np.std(volumes_arr):.6e}")
+        print("\n  Prod statistics:")
+        print(f"    min: {np.min(prods_arr):.6e}")
+        print(f"    max: {np.max(prods_arr):.6e}")
+        print(f"    mean: {np.mean(prods_arr):.6e}")
+        print(f"    std: {np.std(prods_arr):.6e}")
     return np.array(vals)
 
 
 def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100, 
-                          epsilon=1e-12, global_rotation_epsilon=1e-12):
+                          epsilon=1e-5, global_rotation_epsilon=1e-5):
     """Check dψ = 0 and dφ = ω² using model predictions in neighborhoods."""
     
     link_points = data['link_points']
@@ -225,8 +450,17 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
         
-        # Predict φ
-        phi_vec = g2_models['3form'].predict(X_input, verbose=0)[0]
+        # Predict φ (raw normalized output)
+        phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
+        
+        # Denormalize prediction if model has normalization metadata
+        if hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance'):
+            y_mean = g2_models['3form'].y_mean.numpy()
+            y_std = np.sqrt(g2_models['3form'].y_variance.numpy())
+            phi_vec = phi_vec_raw * y_std + y_mean
+        else:
+            phi_vec = phi_vec_raw
+        
         phi = vec_to_form(phi_vec, n=7, k=3)
         return phi
     
@@ -239,9 +473,24 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
         X_input = np.concatenate([link_pt, eta, [drop_max, drop_one]])
         X_input = np.expand_dims(X_input, axis=0)
         
-        # Predict φ and G2 metric
-        phi_vec = g2_models['3form'].predict(X_input, verbose=0)[0]
-        metric_vec = g2_models['metric'].predict(X_input, verbose=0)[0]
+        # Predict φ and G2 metric (raw normalized outputs)
+        phi_vec_raw = g2_models['3form'].predict(X_input, verbose=0)[0]
+        metric_vec_raw = g2_models['metric'].predict(X_input, verbose=0)[0]
+        
+        # Denormalize predictions if models have normalization metadata
+        if hasattr(g2_models['3form'], 'y_mean') and hasattr(g2_models['3form'], 'y_variance'):
+            y_mean = g2_models['3form'].y_mean.numpy()
+            y_std = np.sqrt(g2_models['3form'].y_variance.numpy())
+            phi_vec = phi_vec_raw * y_std + y_mean
+        else:
+            phi_vec = phi_vec_raw
+        
+        if hasattr(g2_models['metric'], 'y_mean') and hasattr(g2_models['metric'], 'y_variance'):
+            y_mean = g2_models['metric'].y_mean.numpy()
+            y_std = np.sqrt(g2_models['metric'].y_variance.numpy())
+            metric_vec = metric_vec_raw * y_std + y_mean
+        else:
+            metric_vec = metric_vec_raw
         
         phi = vec_to_form(phi_vec, n=7, k=3)
         metric = vec_to_metric(metric_vec)
@@ -252,35 +501,66 @@ def check_d_psi_and_d_phi(data, g2_models, fmodel, BASIS, n_points=100,
     
     find_max_fn = lambda point_cc: find_max_dQ_coords(point_cc, BASIS)
     
-    for idx in tqdm(indices, desc="dψ and dφ check (model)"):
+    skipped_dpsi = 0
+    skipped_dphi = 0
+    
+    for idx in tqdm(indices, desc="dψ and dφ check (model)", file=sys.stdout, dynamic_ncols=True):
         base_point = base_points[idx]
         rotation = rotations[idx]
         
         # Check dψ using model predictions in neighborhood
-        dic_psi = sample_numerical_g2_neighborhood_val(
-            lambda p: predict_psi_at_point(p, rotation), base_point, epsilon,
-            find_max_dQ_coords_fn=find_max_fn,
-            global_rotation_epsilon=global_rotation_epsilon
-        )
-        d_psi = numerical_d_g2(dic_psi, epsilon)
-        vals_dpsi.append(np.linalg.norm(d_psi))
+        try:
+            with np.errstate(invalid='ignore', divide='ignore'):
+                dic_psi = sample_numerical_g2_neighborhood_val(
+                    lambda p: predict_psi_at_point(p, rotation), base_point, epsilon,
+                    find_max_dQ_coords_fn=find_max_fn,
+                    global_rotation_epsilon=global_rotation_epsilon
+                )
+                d_psi = numerical_d_g2(dic_psi, epsilon)
+                norm_dpsi = np.linalg.norm(d_psi)
+                
+                if np.isfinite(norm_dpsi):
+                    vals_dpsi.append(norm_dpsi)
+                else:
+                    skipped_dpsi += 1
+        except:
+            skipped_dpsi += 1
         
         # Check dφ using model predictions in neighborhood
-        dic_phi = sample_numerical_g2_neighborhood_val(
-            lambda p: predict_phi_at_point(p, rotation), base_point, epsilon,
-            find_max_dQ_coords_fn=find_max_fn,
-            global_rotation_epsilon=global_rotation_epsilon
-        )
-        d_phi = numerical_d_g2(dic_phi, epsilon)
-        vals_dphi.append(np.linalg.norm(d_phi))
-        
-        # Compute ω² for comparison
-        cy_metric = np.array(fmodel(np.expand_dims(base_point, axis=0))[0])
-        w = kahler_form_real_matrix(cy_metric)
-        w_R7 = np.pad(w, ((0, 1), (0, 1)), mode='constant')
-        w2 = wedge(w_R7, w_R7)
-        
-        vals_ratio.append(np.linalg.norm(d_phi) / np.linalg.norm(w2))
+        try:
+            with np.errstate(invalid='ignore', divide='ignore'):
+                dic_phi = sample_numerical_g2_neighborhood_val(
+                    lambda p: predict_phi_at_point(p, rotation), base_point, epsilon,
+                    find_max_dQ_coords_fn=find_max_fn,
+                    global_rotation_epsilon=global_rotation_epsilon
+                )
+                d_phi = numerical_d_g2(dic_phi, epsilon)
+                norm_dphi = np.linalg.norm(d_phi)
+                
+                # Compute ω² for comparison
+                cy_metric = np.array(fmodel(np.expand_dims(base_point, axis=0))[0])
+                w = kahler_form_real_matrix(cy_metric)
+                w_R7 = np.pad(w, ((0, 1), (0, 1)), mode='constant')
+                w2 = wedge(w_R7, w_R7)
+                norm_w2 = np.linalg.norm(w2)
+                
+                if np.isfinite(norm_dphi) and np.isfinite(norm_w2) and norm_w2 > 0:
+                    vals_dphi.append(norm_dphi)
+                    vals_ratio.append(norm_dphi / norm_w2)
+                else:
+                    skipped_dphi += 1
+        except:
+            skipped_dphi += 1
+    
+    # Print statistics
+    total_checked = len(indices)
+    valid_dpsi = len(vals_dpsi)
+    valid_dphi = len(vals_dphi)
+    
+    print(f"\n  dψ check - Valid: {valid_dpsi}/{total_checked} ({valid_dpsi/total_checked*100:.2f}%), "
+          f"Skipped: {skipped_dpsi} ({skipped_dpsi/total_checked*100:.2f}%)")
+    print(f"  dφ check - Valid: {valid_dphi}/{total_checked} ({valid_dphi/total_checked*100:.2f}%), "
+          f"Skipped: {skipped_dphi} ({skipped_dphi/total_checked*100:.2f}%)")
     
     return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_ratio)
 
@@ -293,9 +573,8 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
     plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
     plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
                 label=r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}=7$")
-    plt.ylim(6.5, 7.5)
+    # plt.ylim(6.5, 7.5)  # Temporarily commented out for debugging
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
     output_path = output_dir / f"g2_phi_wedge_psi_model_run{run_number}.png"
@@ -314,7 +593,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.plot(vals_dpsi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\psi\|$")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_model_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -326,7 +604,6 @@ def plot_dpsi(vals_dpsi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\psi\|$")
     plt.ylabel("Count")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dpsi_model_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -344,7 +621,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.plot(vals_dphi, marker='.', linestyle='None', alpha=0.6)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\|$")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_model_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -356,7 +632,6 @@ def plot_dphi(vals_dphi, run_number, output_dir):
     plt.hist(vals_filtered, bins=30, alpha=0.7, edgecolor='black')
     plt.xlabel(r"$\|\mathrm{d}\varphi\|$")
     plt.ylabel("Count")
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_model_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -376,7 +651,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -390,7 +664,6 @@ def plot_ratio(vals_ratio, run_number, output_dir):
     plt.xlabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
     plt.ylabel("Count")
     plt.legend()
-    plt.grid(True, alpha=0.3)
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}_histogram.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -412,9 +685,9 @@ def main():
                        help='Directory containing CY data')
     parser.add_argument('--n-points', type=int, default=None,
                        help='Number of points for all identity checks (default: all, or random sample if specified)')
-    parser.add_argument('--epsilon', type=float, default=1e-12,
+    parser.add_argument('--epsilon', type=float, default=1e-5,
                        help='Epsilon for numerical derivative')
-    parser.add_argument('--rotation-epsilon', type=float, default=1e-12,
+    parser.add_argument('--rotation-epsilon', type=float, default=1e-5,
                        help='Epsilon for global phase rotation')
     parser.add_argument('--output-dir', type=str, default='./plots',
                        help='Directory to save output plots')

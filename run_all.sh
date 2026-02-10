@@ -10,44 +10,50 @@ echo "Starting G2 Structure Learning Pipeline"
 echo "====================================="
 
 # Step 1: Train CY Metric Model
-echo ""
-echo "Step 1: Training CY Metric Model..."
-python run_cy.py
+#echo ""
+#echo "Step 1: Training CY Metric Model..."
+#python run_cy.py --n-points 200000 --n-epochs 300 
 
 # Step 2: Generate G2 Sample Data
-echo ""
-echo "Step 2: Generating G2 Sample Data..."
-python sampling.py
+#echo ""
+#echo "Step 2: Generating G2 Sample Data..."
+#python sampling.py
+
 
 # Step 3: Train G2 3-form Model
 echo ""
 echo "Step 3: Training G2 3-form Model..."
-python run_g2.py --task 3form
+python run_g2.py --task 3form --n-epochs 150    
 
 # Step 4: Train G2 Metric Model
 echo ""
 echo "Step 4: Training G2 Metric Model..."
-python run_g2.py --task metric
+python run_g2.py --task metric --n-epochs 150 
+
+# Step 4b: Train G2 4-form Model
+echo ""
+echo "Step 4b: Training G2 4-form Model..."
+python run_g2.py --task 4form --n-epochs 150 
 
 # Step 5: Run data analysis
-echo ""
-echo "Step 5: Running Data Analysis..."
-python analysis/data_analysis.py
+#echo ""
+#echo "Step 5: Running Data Analysis..."
+#python analysis/data_analysis.py
 
 # Step 6: Validate CY Metric Kählerity
-echo ""
-echo "Step 6: Validating CY Metric Kählerity..."
-python analysis/cy_kahlerity.py
+#echo ""
+#echo "Step 6: Validating CY Metric Kählerity..."
+#python analysis/cy_kahlerity.py
 
 # Step 7: Validate G2 Identities (Analytic)
-echo ""
-echo "Step 7: Validating G2 Identities (Analytic)..."
-python analysis/g2_identities_analytic.py
+#echo ""
+#echo "Step 7: Validating G2 Identities (Analytic)..."
+#python analysis/g2_identities_analytic.py
 
 # Step 8: Validate G2 Identities (Model)
 echo ""
 echo "Step 8: Validating G2 Identities (Model)..."
-python analysis/g2_identities_model.py
+python analysis/g2_identities_model.py --n-pounts 100 --output-dir plots/small_test
 
 echo ""
 echo "====================================="

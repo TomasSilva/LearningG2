@@ -1,3 +1,9 @@
+# Project-specific
+scratch/
+plots/**
+models/link_models/**
+samples/link_data/**
+
 # Python cache
 **/__pycache__/
 *.py[cod]
@@ -20,7 +26,3 @@ venv/
 
 # macOS
 .DS_Store
-
-# Project-specific
-plots/
-scratch/

@@ -340,7 +340,7 @@ def main():
     # Load model configuration
     config_path = pathlib.Path(cy_config_path)
     with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.UnsafeLoader)
     
     print(f"Loaded CY model config from {config_path}")
     
