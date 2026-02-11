@@ -19,7 +19,7 @@ DATA_PATH = PROJECT_ROOT / "samples" / "link_data" / "g2_test.npz"
 
 # Import compression functions
 sys.path.insert(0, str(PROJECT_ROOT))
-from geometry.compression import form_to_vec, metric_to_vec
+from geometry.compression import form_to_vec, metric_to_vec, vec_to_metric
 
 # Ensure plots directory exists
 PLOTS_DIR.mkdir(exist_ok=True)
@@ -66,38 +66,24 @@ def find_most_recent_run():
 
 def plot_volume_comparison(data, save_path):
     """Plot CY volume vs G2 volume."""
-    # Riemannian metrics are stored as 21 components (upper triangular without diagonal)
-    # G2 metrics are stored as 28 components (upper triangular with diagonal)
+    # Riemannian metrics are stored as 21 Cholesky components (6x6 matrix)
+    # G2 metrics are stored as 28 Cholesky components (7x7 matrix)
     
     # Reconstruct full matrices if needed
     riem_metrics = data["riemannian_metrics"]
     g2_metrics_data = data["g2_metrics"]
     
     if riem_metrics.ndim == 2 and riem_metrics.shape[1] == 21:
-        # Reconstruct 6x6 symmetric matrices from 21 components (with diagonal)
-        cy_vol = []
-        for components in riem_metrics:
-            mat = np.zeros((6, 6))
-            idx = np.triu_indices(6)  # Upper triangular WITH diagonal
-            mat[idx] = components
-            mat = mat + mat.T  # Make symmetric
-            np.fill_diagonal(mat, np.diag(mat) / 2)  # Diagonal was added twice
-            cy_vol.append(np.sqrt(np.linalg.det(mat)))
-        cy_vol = np.array(cy_vol)
+        # Reconstruct 6x6 symmetric matrices from 21 Cholesky components
+        riem_matrices = vec_to_metric(riem_metrics)
+        cy_vol = np.sqrt(np.linalg.det(riem_matrices))
     else:
         cy_vol = np.sqrt(np.linalg.det(riem_metrics))
     
     if g2_metrics_data.ndim == 2 and g2_metrics_data.shape[1] == 28:
-        # Reconstruct 7x7 symmetric matrices from 28 components (with diagonal)
-        g2_vol = []
-        for components in g2_metrics_data:
-            mat = np.zeros((7, 7))
-            idx = np.triu_indices(7)
-            mat[idx] = components
-            mat = mat + mat.T
-            np.fill_diagonal(mat, np.diag(mat) / 2)  # Diagonal was added twice
-            g2_vol.append(np.sqrt(np.linalg.det(mat)))
-        g2_vol = np.array(g2_vol)
+        # Reconstruct 7x7 symmetric matrices from 28 Cholesky components
+        g2_matrices = vec_to_metric(g2_metrics_data)
+        g2_vol = np.sqrt(np.linalg.det(g2_matrices))
     else:
         g2_vol = np.sqrt(np.linalg.det(g2_metrics_data))
     
