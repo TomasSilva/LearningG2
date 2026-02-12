@@ -10,14 +10,14 @@ echo "Starting G2 Structure Learning Pipeline"
 echo "====================================="
 
 # Step 1: Train CY Metric Model
-#echo ""
-#echo "Step 1: Training CY Metric Model..."
-#python run_cy.py --n-points 200000 --n-epochs 300 
+echo ""
+echo "Step 1: Training CY Metric Model..."
+python run_cy.py --n-points 200000 --n-epochs 300 
 
 # Step 2: Generate G2 Sample Data
-#echo ""
-#echo "Step 2: Generating G2 Sample Data..."
-#python sampling.py
+echo ""
+echo "Step 2: Generating G2 Sample Data..."
+python sampling.py
 
 # Step 3: Train G2 3-form Model
 echo ""

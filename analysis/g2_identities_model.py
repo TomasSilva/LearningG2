@@ -368,7 +368,7 @@ def main():
     args = parser.parse_args()
     
     # Outlier filtering parameter
-    outlier_proportion = 0.05  # Remove top 5% from statistics and plots
+    outlier_proportion = 0.0
     
     # Convert to absolute paths
     script_dir = Path(__file__).parent.parent

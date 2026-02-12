@@ -107,7 +107,7 @@ def plot_domega_norms(vals, dataset_name, save_path=None):
         If provided, save plot to this path
     """
     plt.figure(figsize=(10, 6))
-    plt.scatter(range(len(vals)), vals, c='b', marker='o', alpha=0.7)
+    plt.scatter(range(len(vals)), vals, marker='o', alpha=0.7)
     plt.ylim(bottom=0, top=1)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathsf{d}\omega\|$")

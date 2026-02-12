@@ -41,6 +41,9 @@ try:
 except ImportError:
     CYMETRIC_AVAILABLE = False
 
+# Define the plotting alpha transparency
+alpha_transparency = 0.3
+
 
 def get_most_recent_g2_run_number(model_dir='./models/link_models'):
     """
@@ -333,7 +336,7 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
         return
     
     plt.figure(figsize=(10, 6))
-    plt.scatter(range(len(vals)), vals, marker='.', alpha=0.7)
+    plt.scatter(range(len(vals)), vals, marker='.', alpha=alpha_transparency)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\frac{\varphi\wedge\psi}{\sqrt{\det(g_{\varphi})}}$")
     plt.axhline(y=7, linestyle=':', linewidth=2, color='red',
@@ -347,7 +350,7 @@ def plot_phi_wedge_psi(vals, run_number, output_dir):
     print(f"Saved plot: {output_path}")
     plt.close()
 
-def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.05):
+def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.0):
     """Plot ||dφ||/||ω²|| distribution.
     
     Parameters
@@ -359,7 +362,7 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.05)
     output_dir : Path
         Directory to save plots
     outlier_proportion : float, optional
-        Proportion of top outliers to remove (default: 0.05 = 5%)
+        Proportion of top outliers to remove (default: 0.0)
     """
     if len(vals_ratio) == 0:
         return
@@ -374,7 +377,7 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.05)
     
     # Scatter plot (using filtered values)
     plt.figure(figsize=(7, 5))
-    plt.plot(vals_filtered, marker='.', linestyle='None', alpha=0.6)
+    plt.plot(vals_filtered, marker='.', linestyle='None', alpha=alpha_transparency)
     plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
@@ -402,7 +405,7 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.05)
     plt.close()
     '''
 
-def plot_dpsi(vals_dpsi, run_number, output_dir, outlier_proportion=0.05):
+def plot_dpsi(vals_dpsi, run_number, output_dir, outlier_proportion=0.0):
     """Plot ||dψ|| distribution.
     
     Parameters
@@ -414,7 +417,7 @@ def plot_dpsi(vals_dpsi, run_number, output_dir, outlier_proportion=0.05):
     output_dir : Path
         Directory to save plots
     outlier_proportion : float, optional
-        Proportion of top outliers to remove (default: 0.05 = 5%)
+        Proportion of top outliers to remove (default: 0.0)
     """
     if len(vals_dpsi) == 0:
         print(f"Skipping dψ plots: no valid data")
@@ -430,7 +433,7 @@ def plot_dpsi(vals_dpsi, run_number, output_dir, outlier_proportion=0.05):
     
     # Scatter plot (using filtered values)
     plt.figure(figsize=(7, 5))
-    plt.plot(vals_filtered, marker='.', linestyle='None', alpha=0.6)
+    plt.plot(vals_filtered, marker='.', linestyle='None', alpha=alpha_transparency)
     plt.xlabel("Sample Index")
     plt.ylabel(r"$\|\mathrm{d}\psi\|$")
     plt.ylim(bottom=0, top=1)
