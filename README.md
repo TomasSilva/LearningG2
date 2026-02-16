@@ -86,5 +86,13 @@ Based on numerical exterior derivative methods from [arXiv:2510.00999](https://a
 ## BibTeX Citation
 
 ```
-raise NotImplementedError("Paper yet to be published.")
+@misc{heyes2026neuralnumericalmethodsmathrmg2structures,
+      title={Neural and numerical methods for $\mathrm{G}_2$-structures on contact Calabi-Yau 7-manifolds}, 
+      author={Elli Heyes and Edward Hirst and Henrique N. Sá Earp and Tomás S. R. Silva},
+      year={2026},
+      eprint={2602.12438},
+      archivePrefix={arXiv},
+      primaryClass={math.DG},
+      url={https://arxiv.org/abs/2602.12438}, 
+}
 ```
