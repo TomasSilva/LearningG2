@@ -180,8 +180,8 @@ def check_d_psi_and_d_phi(data, fmodel, BASIS, n_points=100, epsilon=1e-5,
         norm_w2 = np.linalg.norm(w2)
         
         vals_omega2.append(norm_w2)
-        # Ratio ||dφ|| / ||ω²||
-        vals_ratio.append(np.linalg.norm(d_phi) / norm_w2)
+        # Relative residual ||dφ - ω²|| / ||ω²||
+        vals_ratio.append(np.linalg.norm(d_phi - w2) / norm_w2)
     
     return np.array(vals_dpsi), np.array(vals_dphi), np.array(vals_omega2), np.array(vals_ratio)
 
@@ -264,12 +264,12 @@ def main():
     
     print_statistics("||dψ||", vals_dpsi)
     print_statistics("||dφ||", vals_dphi)
-    print_statistics("||dφ||/||ω²||", vals_ratio)
+    print_statistics("||dφ - ω²||/||ω²||", vals_ratio)
     
-    # Compute MSE between dφ and ω²
-    if len(vals_dphi) > 0 and len(vals_omega2) > 0:
-        mse_dphi_omega = np.mean((vals_dphi - vals_omega2)**2)
-        print(f"\nMSE between ||dφ|| and ||ω²||: {mse_dphi_omega:.6e}")
+    # Compute mean squared relative residual
+    if len(vals_ratio) > 0:
+        mean_sq_residual = np.mean(vals_ratio**2)
+        print(f"\nMean squared relative residual ||dφ - ω²||²/||ω²||²: {mean_sq_residual:.6e}")
     
     plot_dpsi(vals_dpsi, "analytic", output_dir)
     plot_dphi_ratio(vals_ratio, "analytic", output_dir)

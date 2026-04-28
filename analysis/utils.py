@@ -378,11 +378,9 @@ def plot_dphi_ratio(vals_ratio, run_number, output_dir, outlier_proportion=0.0):
     # Scatter plot (using filtered values)
     plt.figure(figsize=(7, 5))
     plt.plot(vals_filtered, marker='.', linestyle='None', alpha=alpha_transparency)
-    plt.axhline(y=1.0, linestyle='--', color='red', alpha=0.7, label='Ideal ratio = 1')
     plt.xlabel("Sample Index")
-    plt.ylabel(r"$\|\mathrm{d}\varphi\| / \|\omega^2\|$")
+    plt.ylabel(r"$\|\mathrm{d}\varphi - \omega \wedge \omega\| / \|\omega \wedge \omega\|$")
     plt.ylim(bottom=0, top=10)
-    plt.legend()
     plt.tight_layout()
     output_path = output_dir / f"g2_dphi_omega_ratio_model_run{run_number}.png"
     plt.savefig(output_path, dpi=150, bbox_inches='tight')

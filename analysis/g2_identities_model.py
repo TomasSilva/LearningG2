@@ -329,11 +329,12 @@ def check_g2_identities_combined(data, g2_models, fmodel, BASIS, n_points=100,
                 norm_w2 = np.linalg.norm(w2)
                 
                 # Filter out unreasonably large values (likely numerical errors)
+                norm_residual = np.linalg.norm(d_phi - w2)
                 if np.isfinite(norm_dphi) and np.isfinite(norm_w2) and norm_w2 > 0:
-                    if norm_dphi < 1e3 and norm_dphi / norm_w2 < 1e3:
+                    if norm_dphi < 1e3 and norm_residual / norm_w2 < 1e3:
                         vals_dphi.append(norm_dphi)
                         vals_omega2.append(norm_w2)
-                        vals_ratio.append(norm_dphi / norm_w2)
+                        vals_ratio.append(norm_residual / norm_w2)
         except Exception:
             # Skip points where derivative computation fails
             pass
@@ -453,26 +454,39 @@ def main():
     print_statistics("φ∧ψ/Vol", vals_phi_psi, outlier_proportion)
     print_statistics("||dψ||", vals_dpsi, outlier_proportion)
     print_statistics("||dφ||", vals_dphi, outlier_proportion)
-    print_statistics("||dφ||/||ω²||", vals_ratio, outlier_proportion)
+    print_statistics("||dφ - ω²||/||ω²||", vals_ratio, outlier_proportion)
     
-    # Compute MSE between dφ and ω² (excluding top outliers)
-    if len(vals_dphi) > 0 and len(vals_omega2) > 0:
-        if outlier_proportion > 0 and len(vals_dphi) > 10:
+    # Compute mean squared relative residual ||dφ - ω²||²/||ω²||² (excluding top outliers)
+    if len(vals_ratio) > 0:
+        if outlier_proportion > 0 and len(vals_ratio) > 10:
             percentile_high = (1 - outlier_proportion) * 100
-            q_high_dphi = np.percentile(vals_dphi, percentile_high)
-            q_high_omega2 = np.percentile(vals_omega2, percentile_high)
-            # Apply filter based on both arrays
-            mask = (vals_dphi <= q_high_dphi) & (vals_omega2 <= q_high_omega2)
-            vals_dphi_filtered = vals_dphi[mask]
-            vals_omega2_filtered = vals_omega2[mask]
+            q_high_ratio = np.percentile(vals_ratio, percentile_high)
+            vals_ratio_filtered = vals_ratio[vals_ratio <= q_high_ratio]
         else:
-            vals_dphi_filtered = vals_dphi
-            vals_omega2_filtered = vals_omega2
+            vals_ratio_filtered = vals_ratio
         
-        if len(vals_dphi_filtered) > 0:
-            mse_dphi_omega = np.mean((vals_dphi_filtered - vals_omega2_filtered)**2)
-            print(f"\nMSE between ||dφ|| and ||ω²|| (excluding top {outlier_proportion*100:.1f}%): {mse_dphi_omega:.6e}")
+        if len(vals_ratio_filtered) > 0:
+            mean_sq_residual = np.mean(vals_ratio_filtered**2)
+            print(f"\nMean squared relative residual ||dφ - ω²||²/||ω²||² (excluding top {outlier_proportion*100:.1f}%): {mean_sq_residual:.6e}")
     
+    # Save results to JSON for later plot customisation
+    import json
+    json_path = output_dir / f"g2_identities_model_run{g2_run_number}.json"
+    json_data = {
+        "g2_run_number": g2_run_number,
+        "cy_run_number": cy_run_number,
+        "psi_method": args.psi_method,
+        "n_points_requested": n_points,
+        "vals_phi_psi": vals_phi_psi.tolist(),
+        "vals_dpsi": vals_dpsi.tolist(),
+        "vals_dphi": vals_dphi.tolist(),
+        "vals_omega2": vals_omega2.tolist(),
+        "vals_ratio": vals_ratio.tolist(),
+    }
+    with open(json_path, 'w') as f:
+        json.dump(json_data, f)
+    print(f"Saved data: {json_path}")
+
     plot_phi_wedge_psi(vals_phi_psi, g2_run_number, output_dir)
     plot_dpsi(vals_dpsi, g2_run_number, output_dir, outlier_proportion)
     plot_dphi_ratio(vals_ratio, g2_run_number, output_dir, outlier_proportion)
