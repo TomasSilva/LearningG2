@@ -59,7 +59,7 @@ def compute_model_mse(g2_data, g2_models):
     etas = g2_data['etas']
     drop_maxs = g2_data['drop_maxs'].reshape(-1, 1)
     drop_ones = g2_data['drop_ones'].reshape(-1, 1)
-    X = np.hstack([link_points, etas, drop_maxs, drop_ones])
+    X = np.hstack([link_points, etas, drop_maxs, drop_ones]).astype(np.float32)
     
     results = {}
     
