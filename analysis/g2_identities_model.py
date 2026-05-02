@@ -11,6 +11,8 @@ where φ and metric are predicted by trained neural networks.
 """
 
 import os, sys
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices=false'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import argparse
 from pathlib import Path
 import numpy as np

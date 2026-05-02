@@ -149,7 +149,9 @@ def load_g2_models(g2_run_number, script_dir, load_4form=False):
         return None
     
     models['3form'] = tf.keras.models.load_model(str(form_model_path))
+    models['3form'].compile(jit_compile=False)
     models['metric'] = tf.keras.models.load_model(str(metric_model_path))
+    models['metric'].compile(jit_compile=False)
     
     return_dict = {
         '3form': models['3form'],
@@ -159,6 +161,7 @@ def load_g2_models(g2_run_number, script_dir, load_4form=False):
     # Load 4form model only if requested
     if load_4form and fourform_model_path.exists():
         models['4form'] = tf.keras.models.load_model(str(fourform_model_path))
+        models['4form'].compile(jit_compile=False)
         return_dict['4form'] = models['4form']
 
     # Load normalization statistics from .npz files
