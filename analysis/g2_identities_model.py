@@ -344,6 +344,9 @@ def check_g2_identities_combined(data, g2_models, fmodel, BASIS, n_points=100,
 
 
 def main():
+    import tensorflow as tf
+    tf.config.optimizer.set_jit(False)
+
     parser = argparse.ArgumentParser(
         description='Check G2 identities on LEARNED model predictions'
     )
