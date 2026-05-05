@@ -13,6 +13,12 @@ where φ and metric are predicted by trained neural networks.
 import os, sys
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices=false'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# Configure TensorFlow before any other imports; geometry.geometry imports TF at
+# module level, so JIT must be disabled here or it will be active during import.
+import tensorflow as tf
+tf.config.optimizer.set_jit(False)
+
 import argparse
 from pathlib import Path
 import numpy as np
@@ -301,6 +307,7 @@ def check_g2_identities_combined(data, g2_models, fmodel, BASIS, n_points=100,
                 dic_psi = sample_numerical_g2_neighborhood_val(
                     lambda p: predict_psi_at_point(p, drop_max, drop_one, rotation),
                     base_point, epsilon,
+                    global_rotation_epsilon=epsilon,
                     drop_max=drop_max, drop_one=drop_one
                 )
                 d_psi = numerical_d_g2(dic_psi, epsilon)
@@ -318,6 +325,7 @@ def check_g2_identities_combined(data, g2_models, fmodel, BASIS, n_points=100,
                 dic_phi = sample_numerical_g2_neighborhood_val(
                     lambda p: predict_phi_at_point(p, drop_max, drop_one, rotation),
                     base_point, epsilon,
+                    global_rotation_epsilon=epsilon,
                     drop_max=drop_max, drop_one=drop_one
                 )
                 d_phi = numerical_d_g2(dic_phi, epsilon)
@@ -348,6 +356,10 @@ def check_g2_identities_combined(data, g2_models, fmodel, BASIS, n_points=100,
 def main():
     import tensorflow as tf
     tf.config.optimizer.set_jit(False)
+    # Force all tf.functions to run eagerly, bypassing GPU JIT compilation.
+    # This is necessary on some HPC clusters where XLA/JIT compilation fails
+    # for layers such as Normalization even when jit_compile=False is set via compile().
+    tf.config.run_functions_eagerly(True)
 
     parser = argparse.ArgumentParser(
         description='Check G2 identities on LEARNED model predictions'
